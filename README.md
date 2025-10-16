@@ -109,6 +109,26 @@ This is a demo application provided as-is. For issues related to:
 - **Demo Issues**: [GitHub Issues](https://github.com/anthropics/sdk-demos/issues)
 - **API Questions**: [Anthropic Support](https://support.anthropic.com)
 
+## 📋 Coupling Compliance Audit
+
+A comprehensive architectural audit has been conducted on this codebase. **12 coupling violations** have been identified, including 2 critical issues requiring immediate attention.
+
+**Health Score**: 45/100 (Critical)
+
+### Quick Links
+- **Start Here**: [Coupling Audit Quick Start](./COUPLING_AUDIT_QUICKSTART.md) (5 min read)
+- **Executive Summary**: [Coupling Audit Summary](./COUPLING_AUDIT_SUMMARY.md) (15 min read)
+- **Full Report**: [Coupling Audit Report](./COUPLING_AUDIT_REPORT.md) (30 min read)
+- **Detailed Issues**: [Coupling Violations](./COUPLING_VIOLATIONS/) (Issue specifications)
+
+### Top 2 Critical Issues
+1. **Multiple Uncoordinated Database Instances** - 7 independent SQLite connections (data corruption risk)
+2. **Duplicated EmailRecord Interfaces** - Inconsistent field naming (camelCase vs snake_case)
+
+**Recommended Action**: Allocate 2 engineers for 4 weeks to address critical architectural technical debt.
+
+---
+
 ## License
 
 MIT - This is sample code for demonstration purposes.
