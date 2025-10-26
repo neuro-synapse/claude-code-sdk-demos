@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Calendar, User, Paperclip, AlertCircle, Reply, Send, X } from 'lucide-react';
+import { EmailHTMLRenderer } from './EmailHTMLRenderer';
 
 interface EmailData {
   id: number;
@@ -49,7 +50,7 @@ export function EmailDisplay({ emailId, compact = false }: EmailDisplayProps) {
       if (!response.ok) {
         throw new Error(`Failed to fetch email: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
       setEmail(data);
     } catch (err) {
@@ -206,11 +207,13 @@ export function EmailDisplay({ emailId, compact = false }: EmailDisplayProps) {
               )}
             </div>
 
-            <div className="mt-2 p-2 bg-gray-50 border border-gray-200 text-xs">
-              {email.body_text ? (
-                <div className="whitespace-pre-wrap font-mono">{email.body_text}</div>
+            <div className="mt-2 bg-white border border-gray-200">
+              {email.body_html ? (
+                <EmailHTMLRenderer html={email.body_html} className="min-h-[400px]" />
+              ) : email.body_text ? (
+                <div className="p-2 whitespace-pre-wrap font-mono text-xs">{email.body_text}</div>
               ) : (
-                <div className="text-gray-400 italic">No content available</div>
+                <div className="p-2 text-gray-400 italic text-xs">No content available</div>
               )}
             </div>
 
