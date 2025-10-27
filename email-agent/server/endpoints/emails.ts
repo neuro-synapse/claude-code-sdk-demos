@@ -30,6 +30,8 @@ export async function handleInboxEndpoint(req: Request): Promise<Response> {
       subject: email.subject || '',
       date: typeof email.dateSent === 'string' ? new Date(email.dateSent) : email.dateSent,
       body: email.bodyText || '',
+      body_text: email.bodyText,
+      body_html: email.bodyHtml,
       hasAttachments: email.hasAttachments,
       isRead: email.isRead,
       folder: email.folder,
@@ -108,6 +110,8 @@ export async function handleSearchEndpoint(req: Request): Promise<Response> {
       subject: email.subject || '',
       date: typeof email.dateSent === 'string' ? new Date(email.dateSent) : email.dateSent,
       body: email.bodyText || '',
+      body_text: email.bodyText,
+      body_html: email.bodyHtml,
       hasAttachments: email.hasAttachments,
       isRead: email.isRead,
       folder: email.folder,
@@ -201,7 +205,20 @@ export async function handleEmailDetailsEndpoint(req: Request, emailId: string):
     }
 
     const emailData = {
-      ...email,
+      id: (email as any).id,
+      message_id: (email as any).message_id,
+      subject: (email as any).subject,
+      from_address: (email as any).from_address,
+      from_name: (email as any).from_name,
+      date_sent: (email as any).date_sent,
+      body_text: (email as any).body_text,
+      body_html: (email as any).body_html,
+      snippet: (email as any).snippet,
+      is_read: (email as any).is_read,
+      is_starred: (email as any).is_starred,
+      has_attachments: (email as any).has_attachments,
+      attachment_count: (email as any).attachment_count,
+      folder: (email as any).folder,
       recipients: recipientsByType,
     };
 
@@ -257,6 +274,8 @@ export async function handleBatchEmailsEndpoint(req: Request): Promise<Response>
       subject: email.subject,
       date: email.dateSent,
       body: email.bodyText || email.bodyHtml || email.snippet || '',
+      body_text: email.bodyText,
+      body_html: email.bodyHtml,
       hasAttachments: email.hasAttachments,
       isRead: email.isRead,
       folder: email.folder || 'INBOX',
