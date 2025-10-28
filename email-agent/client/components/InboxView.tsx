@@ -16,6 +16,8 @@ interface Email {
   from_address: string;
   from_name?: string;
   date_sent: string;
+  body_text?: string;
+  body_html?: string;
   snippet?: string;
   is_read: boolean;
   is_starred: boolean;
@@ -74,79 +76,78 @@ export function InboxView({ emails, onEmailSelect, selectedEmailId }: InboxViewP
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="divide-y divide-gray-100">
-            {emails.length === 0 ? (
-              <div className="p-8 text-center text-gray-400">
-                <Mail className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p className="text-sm">No emails in inbox</p>
-                <p className="text-xs mt-2">Emails will appear here once synced</p>
-              </div>
-            ) : (
-              emails.map((email, index) => (
-                <div
-                  key={email.id}
-                  onClick={() => onEmailSelect(email)}
-                  className={`p-3 hover:bg-gray-50 cursor-pointer transition-colors ${
-                    !email.is_read ? 'bg-blue-50/30' : ''
-                  } ${
-                    selectedEmailId === email.id ? 'bg-gray-100 border-l-2 border-gray-900' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-1">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm truncate ${!email.is_read ? 'font-semibold' : ''}`}>
-                          {isScreenshotMode
-                            ? getPlaceholderName(index)
-                            : (email.from_name || email.from_address.split('@')[0])}
-                        </span>
-                        {!email.is_read && (
-                          <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500 truncate">
+          {emails.length === 0 ? (
+            <div className="p-8 text-center text-gray-400">
+              <Mail className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-sm">No emails in inbox</p>
+              <p className="text-xs mt-2">Emails will appear here once synced</p>
+            </div>
+          ) : (
+            emails.map((email, index) => (
+              <div
+                key={email.id}
+                onClick={() => onEmailSelect(email)}
+                className={`p-3 hover:bg-gray-50 cursor-pointer transition-colors ${
+                  !email.is_read ? 'bg-blue-50/30' : ''
+                } ${
+                  selectedEmailId === email.id ? 'bg-gray-100 border-l-2 border-gray-900' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between mb-1">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm truncate ${!email.is_read ? 'font-semibold' : ''}`}>
                         {isScreenshotMode
-                          ? getPlaceholderEmail(index)
-                          : email.from_address}
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                      {isScreenshotMode
-                        ? getPlaceholderDate(index * 3)
-                        : formatRelativeTime(email.date_sent)}
-                    </span>
-                  </div>
-
-                  <div className={`text-sm mb-1 ${!email.is_read ? 'font-medium' : ''}`}>
-                    {isScreenshotMode
-                      ? getPlaceholderSubject(index)
-                      : truncate(email.subject || '(No subject)', 50)}
-                  </div>
-
-                  {email.snippet && (
-                    <div className="text-xs text-gray-600 line-clamp-2">
-                      {isScreenshotMode
-                        ? getPlaceholderSnippet(index)
-                        : email.snippet}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 mt-2">
-                    {email.is_starred && (
-                      <span className="text-yellow-500 text-xs">★</span>
-                    )}
-                    {email.has_attachments && (
-                      <span className="text-xs text-gray-400">📎</span>
-                    )}
-                    {email.folder && email.folder !== 'INBOX' && (
-                      <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">
-                        {email.folder}
+                          ? getPlaceholderName(index)
+                          : (email.from_name || email.from_address.split('@')[0])}
                       </span>
-                    )}
+                      {!email.is_read && (
+                        <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {isScreenshotMode
+                        ? getPlaceholderEmail(index)
+                        : email.from_address}
+                    </div>
                   </div>
+                  <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                    {isScreenshotMode
+                      ? getPlaceholderDate(index * 3)
+                      : formatRelativeTime(email.date_sent)}
+                  </span>
                 </div>
-              ))
-            )}
-          </div>
+
+                <div className={`text-sm mb-1 ${!email.is_read ? 'font-medium' : ''}`}>
+                  {isScreenshotMode
+                    ? getPlaceholderSubject(index)
+                    : truncate(email.subject || '(No subject)', 50)}
+                </div>
+
+                {email.snippet && (
+                  <div className="text-xs text-gray-600 line-clamp-2">
+                    {isScreenshotMode
+                      ? getPlaceholderSnippet(index)
+                      : email.snippet}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 mt-2">
+                  {email.is_starred && (
+                    <span className="text-yellow-500 text-xs">★</span>
+                  )}
+                  {email.has_attachments && (
+                    <span className="text-xs text-gray-400">📎</span>
+                  )}
+                  {email.folder && email.folder !== 'INBOX' && (
+                    <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">
+                      {email.folder}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
