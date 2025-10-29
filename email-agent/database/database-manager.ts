@@ -5,6 +5,7 @@ import { DATABASE_PATH } from "./config";
 export interface EmailRecord {
   id?: number;
   messageId: string;
+  imapUid?: number;
   threadId?: string;
   inReplyTo?: string;
   emailReferences?: string;
@@ -604,6 +605,63 @@ export class DatabaseManager {
       labels: row.labels ? JSON.parse(row.labels) : [],
       rawHeaders: row.raw_headers,
     };
+  }
+
+  /**
+   * Update email flags (for listener actions)
+   * Updates only the specified fields while preserving others
+   */
+  public updateEmailFlags(messageId: string, updates: {
+    isRead?: boolean;
+    isStarred?: boolean;
+    isImportant?: boolean;
+    labels?: string[];
+    folder?: string;
+  }): void {
+    const setClauses: string[] = [];
+    const params: any = { $messageId: messageId };
+
+    if (updates.isRead !== undefined) {
+      setClauses.push('is_read = $isRead');
+      params.$isRead = updates.isRead ? 1 : 0;
+    }
+
+    if (updates.isStarred !== undefined) {
+      setClauses.push('is_starred = $isStarred');
+      params.$isStarred = updates.isStarred ? 1 : 0;
+    }
+
+    if (updates.isImportant !== undefined) {
+      setClauses.push('is_important = $isImportant');
+      params.$isImportant = updates.isImportant ? 1 : 0;
+    }
+
+    if (updates.labels !== undefined) {
+      setClauses.push('labels = $labels');
+      params.$labels = JSON.stringify(updates.labels);
+    }
+
+    if (updates.folder !== undefined) {
+      setClauses.push('folder = $folder');
+      params.$folder = updates.folder;
+    }
+
+    // Always update the updated_at timestamp
+    setClauses.push('updated_at = CURRENT_TIMESTAMP');
+
+    if (setClauses.length === 1) {
+      // Only updated_at would be set, so nothing to update
+      return;
+    }
+
+    const sql = `
+      UPDATE emails
+      SET ${setClauses.join(', ')}
+      WHERE message_id = $messageId
+    `;
+
+    const query = this.db.prepare(sql);
+    query.run(params);
   }
 
   // Close database connection
