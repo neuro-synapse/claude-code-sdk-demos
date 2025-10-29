@@ -11,7 +11,7 @@ interface ImapConfig {
   tlsOptions?: { servername: string };
   connTimeout?: number;
   authTimeout?: number;
-  keepalive?: boolean;
+  keepalive?: boolean | { interval: number; idleInterval: number; forceNoop: boolean };
 }
 
 export class ImapManager {

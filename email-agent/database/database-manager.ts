@@ -148,7 +148,7 @@ export class DatabaseManager {
         bodyText,
         toAddresses,
         ccAddresses,
-        attachmentFilenames,
+        attachment_names,
         tokenize = 'porter unicode61'
       )
     `);
@@ -332,8 +332,8 @@ export class DatabaseManager {
         const attachmentNames = attachments.map(a => a.filename).join(" ");
         this.db.prepare(`
           UPDATE emails_fts
-          SET attachmentFilenames = $names
-          WHERE messageId = $messageId
+          SET attachment_names = $names
+          WHERE message_id = $messageId
         `).run({
           $names: attachmentNames,
           $messageId: email.messageId,

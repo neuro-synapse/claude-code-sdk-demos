@@ -13,7 +13,8 @@ import {
   handleInboxEndpoint,
   handleSearchEndpoint,
   handleEmailDetailsEndpoint,
-  handleBatchEmailsEndpoint
+  handleBatchEmailsEndpoint,
+  handleListenerDetailsEndpoint
 } from "./endpoints";
 
 const wsHandler = new WebSocketHandler(DATABASE_PATH);
@@ -201,6 +202,11 @@ const server = Bun.serve({
 
     if (url.pathname === '/api/emails/batch' && req.method === 'POST') {
       return handleBatchEmailsEndpoint(req);
+    }
+
+    if (url.pathname.startsWith('/api/listener/') && req.method === 'GET') {
+      const filename = decodeURIComponent(url.pathname.split('/').pop()!);
+      return handleListenerDetailsEndpoint(req, filename);
     }
 
     if (url.pathname === '/api/listeners' && req.method === 'GET') {
