@@ -576,6 +576,7 @@ export class DatabaseManager {
     return {
       id: row.id,
       messageId: row.message_id,
+      imapUid: row.imap_uid,
       threadId: row.thread_id,
       inReplyTo: row.in_reply_to,
       emailReferences: row.email_references,

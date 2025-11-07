@@ -7,6 +7,7 @@ import { DATABASE_PATH } from "../database/config";
 import { DatabaseManager } from "../database/database-manager";
 import { ImapManager } from "../database/imap-manager";
 import { ListenersManager } from "../ccsdk/listeners-manager";
+import { ActionsManager } from "../ccsdk/actions-manager";
 import {
   handleSyncEndpoint,
   handleSyncStatusEndpoint,
@@ -17,7 +18,10 @@ import {
   handleListenerDetailsEndpoint
 } from "./endpoints";
 
-const wsHandler = new WebSocketHandler(DATABASE_PATH);
+// Initialize Actions Manager
+const actionsManager = new ActionsManager();
+
+const wsHandler = new WebSocketHandler(DATABASE_PATH, actionsManager);
 const db = new Database(DATABASE_PATH);
 
 const dbManager = DatabaseManager.getInstance();
@@ -41,13 +45,17 @@ const listenersManager = new ListenersManager(
     // TODO: Broadcast to WebSocket clients when listeners execute
   },
   imapManager,
-  dbManager
+  dbManager,
+  (log) => {
+    // Log broadcast callback - broadcasts listener logs via WebSocket
+    wsHandler.broadcastListenerLog(log);
+  }
 );
 
 // Initialize EmailSyncService with listenersManager
 const syncService = new EmailSyncService(DATABASE_PATH, listenersManager);
 
-// Initialize listeners and IDLE monitoring asynchronously
+// Initialize listeners, actions, and IDLE monitoring asynchronously
 (async () => {
   // Load all listeners at startup
   await listenersManager.loadAllListeners();
@@ -57,6 +65,17 @@ const syncService = new EmailSyncService(DATABASE_PATH, listenersManager);
     console.log(`[Server] Listeners reloaded: ${listeners.length} active listener(s)`);
   }).catch((error) => {
     console.error('[Server] Failed to start listener file watcher:', error);
+  });
+
+  // Load all action templates at startup
+  const templates = await actionsManager.loadAllTemplates();
+  console.log(`✅ Loaded ${templates.length} action template(s)`);
+
+  // Start watching for action template file changes
+  actionsManager.watchTemplates((templates) => {
+    console.log(`[Server] Action templates reloaded: ${templates.length} template(s)`);
+  }).catch((error) => {
+    console.error('[Server] Failed to start action templates watcher:', error);
   });
 
   // Start IDLE monitoring for live email notifications
@@ -202,6 +221,23 @@ const server = Bun.serve({
 
     if (url.pathname === '/api/emails/batch' && req.method === 'POST') {
       return handleBatchEmailsEndpoint(req);
+    }
+
+    // Listener logs endpoint - MUST come before generic listener details endpoint
+    if (url.pathname.match(/^\/api\/listener\/[^/]+\/logs$/) && req.method === 'GET') {
+      const pathParts = url.pathname.split('/');
+      const listenerId = decodeURIComponent(pathParts[3]);
+      const limit = parseInt(url.searchParams.get('limit') || '50');
+
+      const logWriter = listenersManager.getLogWriter();
+      const logs = await logWriter.readLogs(listenerId, limit);
+
+      return new Response(JSON.stringify({ logs }), {
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders,
+        },
+      });
     }
 
     if (url.pathname.startsWith('/api/listener/') && req.method === 'GET') {

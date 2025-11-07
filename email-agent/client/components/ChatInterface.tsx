@@ -137,18 +137,18 @@ export function ChatInterface({ isConnected, sendMessage, messages, setMessages,
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading || !isConnected) return;
-    
+
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
       content: inputValue,
       timestamp: new Date().toISOString(),
     };
-    
+
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
-    
+
     // Send message through WebSocket
     sendMessage({
       type: 'chat',
@@ -156,7 +156,17 @@ export function ChatInterface({ isConnected, sendMessage, messages, setMessages,
       sessionId,
     });
   };
-  
+
+  const handleExecuteAction = (instanceId: string) => {
+    console.log('Executing action:', instanceId);
+    // Send execute_action message through WebSocket
+    sendMessage({
+      type: 'execute_action',
+      instanceId,
+      sessionId,
+    });
+  };
+
   // No longer need email click handlers as React Markdown handles it
   
   return (
@@ -223,10 +233,10 @@ export function ChatInterface({ isConnected, sendMessage, messages, setMessages,
           ) : (
             <div className="space-y-2">
               {messages.map((msg) => (
-                <MessageRenderer key={msg.id} message={msg} />
+                <MessageRenderer key={msg.id} message={msg} onExecuteAction={handleExecuteAction} />
               ))}
               {isLoading && (
-                <MessageRenderer 
+                <MessageRenderer
                   message={{
                     id: 'loading',
                     type: 'assistant',
