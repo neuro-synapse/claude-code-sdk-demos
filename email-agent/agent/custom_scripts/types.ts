@@ -92,6 +92,12 @@ export interface ListenerContext {
 
   // Call a subagent with a prompt and get structured response
   callAgent<T = any>(options: SubagentOptions<T>): Promise<T>;
+
+  // UI State operations
+  uiState: {
+    get<T>(stateId: string): Promise<T | null>;
+    set<T>(stateId: string, data: T): Promise<void>;
+  };
 }
 
 /**
@@ -109,6 +115,9 @@ export interface ListenerResult {
   // Optional array of action descriptions
   // Examples: ["starred", "labeled:Finance", "archived"]
   actions?: string[];
+
+  // Optional component instances to render
+  components?: ComponentInstance[];
 }
 
 /**
@@ -253,6 +262,12 @@ export interface ActionContext {
 
   // Logging
   log(message: string, level?: "info" | "warn" | "error"): void;
+
+  // UI State operations
+  uiState: {
+    get<T>(stateId: string): Promise<T | null>;
+    set<T>(stateId: string, data: T): Promise<void>;
+  };
 }
 
 /**
@@ -274,6 +289,9 @@ export interface ActionResult {
 
   // Whether to refresh inbox after this action
   refreshInbox?: boolean;
+
+  // Optional component instances to render
+  components?: ComponentInstance[];
 }
 
 /**
@@ -289,4 +307,115 @@ export interface ActionLogEntry {
   result: ActionResult;
   duration: number; // milliseconds
   error?: string;
+}
+
+// ============================================================================
+// UI State and Components System
+// ============================================================================
+
+/**
+ * UI State Template Definition
+ * Defines a persistent state structure that can be updated by actions/listeners
+ * and rendered by components
+ */
+export interface UIStateTemplate<T = any> {
+  // Unique identifier for this state type
+  id: string;
+
+  // Human-readable name
+  name: string;
+
+  // Description of what this state represents
+  description?: string;
+
+  // Initial state structure when created
+  initialState: T;
+}
+
+/**
+ * Component Template Definition
+ * Defines a UI component that renders a specific UI state
+ */
+export interface ComponentTemplate {
+  // Unique identifier for this component
+  id: string;
+
+  // Human-readable name
+  name: string;
+
+  // Description of what this component displays
+  description?: string;
+
+  // Which UI state template this component uses
+  stateId: string;
+}
+
+/**
+ * Component Instance
+ * Created when an action/listener wants to render a component
+ */
+export interface ComponentInstance {
+  // Unique ID for this specific instance
+  instanceId: string;
+
+  // Reference to component template ID
+  componentId: string;
+
+  // Which UI state instance to bind to
+  stateId: string;
+
+  // Session ID this component belongs to
+  sessionId?: string;
+
+  // Timestamp when created
+  createdAt?: string;
+}
+
+/**
+ * Props passed to React components
+ */
+export interface ComponentProps<T = any> {
+  // The current UI state data
+  state: T;
+
+  // Callback to trigger actions from the component
+  onAction: (actionId: string, params: Record<string, any>) => void;
+}
+
+/**
+ * Component Context
+ * Available to component lifecycle hooks (if needed)
+ */
+export interface ComponentContext {
+  // UI State operations
+  uiState: {
+    get<T>(stateId: string): Promise<T | null>;
+    set<T>(stateId: string, data: T): Promise<void>;
+  };
+
+  // Trigger actions
+  triggerAction(templateId: string, params: Record<string, any>): Promise<ActionResult>;
+
+  // Notifications
+  notify(message: string, type?: "info" | "success" | "warning" | "error"): void;
+
+  // Logging
+  log(message: string, data?: Record<string, any>): void;
+}
+
+/**
+ * UI State Module
+ * Exports a configuration from a UI state file
+ */
+export interface UIStateModule<T = any> {
+  config: UIStateTemplate<T>;
+}
+
+/**
+ * Component Module
+ * Exports configuration and React component from a component file
+ */
+export interface ComponentModule {
+  config: ComponentTemplate;
+  Component: React.ComponentType<ComponentProps<any>>;
 }

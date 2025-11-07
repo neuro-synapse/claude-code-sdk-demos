@@ -7,9 +7,10 @@ import { AssistantMessage } from './AssistantMessage';
 interface MessageRendererProps {
   message: Message;
   onExecuteAction?: (instanceId: string) => void;
+  ws?: WebSocket | null;
 }
 
-export function MessageRenderer({ message, onExecuteAction }: MessageRendererProps) {
+export function MessageRenderer({ message, onExecuteAction, ws }: MessageRendererProps) {
   switch (message.type) {
     case 'user':
       return <UserMessage message={message} />;
@@ -18,7 +19,7 @@ export function MessageRenderer({ message, onExecuteAction }: MessageRendererPro
       return <SystemMessage message={message} />;
 
     case 'assistant':
-      return <AssistantMessage message={message} onExecuteAction={onExecuteAction} />;
+      return <AssistantMessage message={message} onExecuteAction={onExecuteAction} ws={ws} />;
     
     default:
       return (

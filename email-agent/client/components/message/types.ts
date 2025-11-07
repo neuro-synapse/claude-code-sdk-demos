@@ -38,10 +38,19 @@ export interface ActionInstance {
   createdAt: string;
 }
 
+export interface ComponentInstance {
+  instanceId: string;
+  componentId: string;
+  stateId: string;
+  sessionId?: string;
+  createdAt?: string;
+}
+
 export interface AssistantMessage extends BaseMessage {
   type: 'assistant';
   content: (TextBlock | ToolUseBlock)[];
   actions?: ActionInstance[];
+  components?: ComponentInstance[];
   metadata?: {
     id: string;
     model: string;

@@ -8,6 +8,8 @@ import { DatabaseManager } from "../database/database-manager";
 import { ImapManager } from "../database/imap-manager";
 import { ListenersManager } from "../ccsdk/listeners-manager";
 import { ActionsManager } from "../ccsdk/actions-manager";
+import { UIStateManager } from "../ccsdk/ui-state-manager";
+import { ComponentManager } from "../ccsdk/component-manager";
 import {
   handleSyncEndpoint,
   handleSyncStatusEndpoint,
@@ -15,17 +17,29 @@ import {
   handleSearchEndpoint,
   handleEmailDetailsEndpoint,
   handleBatchEmailsEndpoint,
-  handleListenerDetailsEndpoint
+  handleListenerDetailsEndpoint,
+  handleGetUIState,
+  handleSetUIState,
+  handleListUIStates,
+  handleListUIStateTemplates,
+  handleListComponentTemplates,
+  handleDeleteUIState
 } from "./endpoints";
 
-// Initialize Actions Manager
-const actionsManager = new ActionsManager();
-
-const wsHandler = new WebSocketHandler(DATABASE_PATH, actionsManager);
-const db = new Database(DATABASE_PATH);
-
+// Initialize managers
 const dbManager = DatabaseManager.getInstance();
 const imapManager = ImapManager.getInstance();
+const actionsManager = new ActionsManager();
+const uiStateManager = new UIStateManager(dbManager);
+const componentManager = new ComponentManager(dbManager);
+
+const wsHandler = new WebSocketHandler(
+  DATABASE_PATH,
+  actionsManager,
+  uiStateManager,
+  componentManager
+);
+const db = new Database(DATABASE_PATH);
 
 db.run(`
   CREATE TABLE IF NOT EXISTS sync_metadata (
@@ -37,7 +51,7 @@ db.run(`
   )
 `);
 
-// Initialize Listeners Manager with IMAP and Database dependencies
+// Initialize Listeners Manager with IMAP, Database, and UIState dependencies
 const listenersManager = new ListenersManager(
   (notification) => {
     // Notification callback - will be used when listeners execute
@@ -49,7 +63,8 @@ const listenersManager = new ListenersManager(
   (log) => {
     // Log broadcast callback - broadcasts listener logs via WebSocket
     wsHandler.broadcastListenerLog(log);
-  }
+  },
+  uiStateManager
 );
 
 // Initialize EmailSyncService with listenersManager
@@ -76,6 +91,28 @@ const syncService = new EmailSyncService(DATABASE_PATH, listenersManager);
     console.log(`[Server] Action templates reloaded: ${templates.length} template(s)`);
   }).catch((error) => {
     console.error('[Server] Failed to start action templates watcher:', error);
+  });
+
+  // Load all UI state templates at startup
+  const uiStateTemplates = await uiStateManager.loadAllTemplates();
+  console.log(`✅ Loaded ${uiStateTemplates.length} UI state template(s)`);
+
+  // Start watching for UI state template file changes
+  uiStateManager.watchTemplates((templates) => {
+    console.log(`[Server] UI state templates reloaded: ${templates.length} template(s)`);
+  }).catch((error) => {
+    console.error('[Server] Failed to start UI state templates watcher:', error);
+  });
+
+  // Load all component templates at startup
+  const componentTemplates = await componentManager.loadAllTemplates();
+  console.log(`✅ Loaded ${componentTemplates.length} component template(s)`);
+
+  // Start watching for component template file changes
+  componentManager.watchTemplates((templates) => {
+    console.log(`[Server] Component templates reloaded: ${templates.length} template(s)`);
+  }).catch((error) => {
+    console.error('[Server] Failed to start component templates watcher:', error);
   });
 
   // Start IDLE monitoring for live email notifications
@@ -269,6 +306,31 @@ const server = Bun.serve({
           ...corsHeaders,
         },
       });
+    }
+
+    // UI State endpoints
+    if (url.pathname.startsWith('/api/ui-state/') && req.method === 'GET') {
+      return handleGetUIState(req, uiStateManager);
+    }
+
+    if (url.pathname.startsWith('/api/ui-state/') && req.method === 'PUT') {
+      return handleSetUIState(req, uiStateManager);
+    }
+
+    if (url.pathname.startsWith('/api/ui-state/') && req.method === 'DELETE') {
+      return handleDeleteUIState(req, uiStateManager);
+    }
+
+    if (url.pathname === '/api/ui-states' && req.method === 'GET') {
+      return handleListUIStates(req, uiStateManager);
+    }
+
+    if (url.pathname === '/api/ui-state-templates' && req.method === 'GET') {
+      return handleListUIStateTemplates(req, uiStateManager);
+    }
+
+    if (url.pathname === '/api/component-templates' && req.method === 'GET') {
+      return handleListComponentTemplates(req, componentManager);
     }
 
     return new Response('Not Found', { status: 404 });

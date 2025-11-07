@@ -3,6 +3,9 @@ import { Session } from "./session";
 import type { WSClient, IncomingMessage } from "./types";
 import { DATABASE_PATH } from "../database/config";
 import type { ActionsManager } from "./actions-manager";
+import type { UIStateManager } from "./ui-state-manager";
+import type { ComponentManager } from "./component-manager";
+import Anthropic from "@anthropic-ai/sdk";
 
 // Main WebSocket handler class
 export class WebSocketHandler {
@@ -10,11 +13,21 @@ export class WebSocketHandler {
   private sessions: Map<string, Session> = new Map();
   private clients: Map<string, WSClient> = new Map();
   private actionsManager?: ActionsManager;
+  private uiStateManager?: UIStateManager;
+  private componentManager?: ComponentManager;
 
-  constructor(dbPath: string = DATABASE_PATH, actionsManager?: ActionsManager) {
+  constructor(
+    dbPath: string = DATABASE_PATH,
+    actionsManager?: ActionsManager,
+    uiStateManager?: UIStateManager,
+    componentManager?: ComponentManager
+  ) {
     this.db = new Database(dbPath);
     this.actionsManager = actionsManager;
+    this.uiStateManager = uiStateManager;
+    this.componentManager = componentManager;
     this.initEmailWatcher();
+    this.initUIStateWatcher();
   }
 
   private async initEmailWatcher() {
@@ -71,6 +84,49 @@ export class WebSocketHandler {
     }
   }
 
+  private initUIStateWatcher() {
+    if (!this.uiStateManager) return;
+
+    // Subscribe to UI state updates
+    this.uiStateManager.onStateUpdate((stateId, data) => {
+      this.broadcastUIStateUpdate(stateId, data);
+    });
+  }
+
+  private broadcastUIStateUpdate(stateId: string, data: any) {
+    const message = JSON.stringify({
+      type: 'ui_state_update',
+      stateId,
+      data
+    });
+
+    // Broadcast to all connected clients
+    for (const client of this.clients.values()) {
+      try {
+        client.send(message);
+      } catch (error) {
+        console.error('Error sending UI state update to client:', error);
+      }
+    }
+  }
+
+  private broadcastComponentInstance(instance: any, sessionId: string) {
+    const message = JSON.stringify({
+      type: 'component_instance',
+      instance,
+      sessionId
+    });
+
+    // Broadcast to all connected clients
+    for (const client of this.clients.values()) {
+      try {
+        client.send(message);
+      } catch (error) {
+        console.error('Error sending component instance to client:', error);
+      }
+    }
+  }
+
   private generateSessionId(): string {
     return 'session-' + Date.now() + '-' + Math.random().toString(36).substring(7);
   }
@@ -110,6 +166,24 @@ export class WebSocketHandler {
       ws.send(JSON.stringify({
         type: 'action_templates',
         templates
+      }));
+    }
+
+    // Send UI state templates
+    if (this.uiStateManager) {
+      const uiStateTemplates = this.uiStateManager.getAllTemplates();
+      ws.send(JSON.stringify({
+        type: 'ui_state_templates',
+        templates: uiStateTemplates
+      }));
+    }
+
+    // Send component templates
+    if (this.componentManager) {
+      const componentTemplates = this.componentManager.getAllTemplates();
+      ws.send(JSON.stringify({
+        type: 'component_templates',
+        templates: componentTemplates
       }));
     }
   }
@@ -221,6 +295,21 @@ export class WebSocketHandler {
               result,
               sessionId
             }));
+
+            // Handle component instances from result
+            if (result.components && this.componentManager) {
+              for (const component of result.components) {
+                // Register the component instance
+                this.componentManager.registerInstance({
+                  ...component,
+                  sessionId,
+                  createdAt: new Date().toISOString()
+                });
+
+                // Broadcast to all clients
+                this.broadcastComponentInstance(component, sessionId);
+              }
+            }
 
             // Refresh inbox if requested
             if (result.refreshInbox) {
@@ -462,9 +551,51 @@ export class WebSocketHandler {
 
       // AI/Agent capabilities
       callAgent: async (options: any) => {
-        // TODO: Implement agent calling
-        console.log('Calling agent:', options);
-        return 'Agent response placeholder';
+        console.log('[ActionContext] callAgent() called:', {
+          model: options.model || "haiku",
+          promptLength: options.prompt?.length,
+          schema: options.schema
+        });
+
+        const anthropic = new Anthropic({
+          apiKey: process.env.ANTHROPIC_API_KEY
+        });
+
+        const modelMap: Record<string, string> = {
+          opus: "claude-opus-4-20250514",
+          sonnet: "claude-sonnet-4-20250514",
+          haiku: "claude-3-5-haiku-20241022"
+        };
+
+        const model = modelMap[options.model || "haiku"];
+
+        const response = await anthropic.messages.create({
+          model,
+          max_tokens: 4096,
+          messages: [
+            {
+              role: "user",
+              content: options.prompt
+            }
+          ],
+          tools: [
+            {
+              name: "respond",
+              description: "Respond with structured data matching the schema",
+              input_schema: options.schema
+            }
+          ],
+          tool_choice: { type: "tool", name: "respond" }
+        });
+
+        // Extract structured response from tool use
+        const toolUse = response.content.find((block) => block.type === "tool_use");
+        if (!toolUse || toolUse.type !== "tool_use") {
+          throw new Error("Agent did not return structured response");
+        }
+
+        console.log('[ActionContext] callAgent() completed');
+        return toolUse.input;
       },
 
       // Session messaging
@@ -503,6 +634,25 @@ export class WebSocketHandler {
       log: (message: string, level?: string) => {
         const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : 'ℹ️';
         console.log(`${prefix} [Action] ${message}`);
+      },
+
+      // UI State operations
+      uiState: {
+        get: async <T = any>(stateId: string): Promise<T | null> => {
+          if (!this.uiStateManager) {
+            console.warn('UIStateManager not available');
+            return null;
+          }
+          return await this.uiStateManager.getState<T>(stateId);
+        },
+
+        set: async <T = any>(stateId: string, data: T): Promise<void> => {
+          if (!this.uiStateManager) {
+            console.warn('UIStateManager not available');
+            return;
+          }
+          await this.uiStateManager.setState<T>(stateId, data);
+        }
       }
     };
   }

@@ -5,10 +5,12 @@ import { AssistantMessage as AssistantMessageType, ToolUseBlock, TextBlock, Acti
 import { EmailDisplay } from '../EmailDisplay';
 import { ListenerDisplay } from '../ListenerDisplay';
 import { ActionButton } from '../ActionButton';
+import { ComponentRenderer } from './ComponentRenderer';
 
 interface AssistantMessageProps {
   message: AssistantMessageType;
   onExecuteAction?: (instanceId: string) => void;
+  ws?: WebSocket | null;
 }
 
 function formatTimestamp(timestamp: string): string {
@@ -408,7 +410,7 @@ function TextComponent({ text }: { text: TextBlock }) {
   );
 }
 
-export function AssistantMessage({ message, onExecuteAction }: AssistantMessageProps) {
+export function AssistantMessage({ message, onExecuteAction, ws }: AssistantMessageProps) {
   const [showMetadata, setShowMetadata] = useState(false);
   const [executingActions, setExecutingActions] = useState<Set<string>>(new Set());
 
@@ -461,6 +463,21 @@ export function AssistantMessage({ message, onExecuteAction }: AssistantMessageP
               action={action}
               onExecute={handleExecuteAction}
               loading={executingActions.has(action.instanceId)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Render component instances if present */}
+      {message.components && message.components.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {message.components.map(component => (
+            <ComponentRenderer
+              key={component.instanceId}
+              instanceId={component.instanceId}
+              componentId={component.componentId}
+              stateId={component.stateId}
+              ws={ws || null}
             />
           ))}
         </div>

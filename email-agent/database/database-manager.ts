@@ -208,6 +208,52 @@ export class DatabaseManager {
         DELETE FROM emails_fts WHERE message_id = OLD.message_id;
       END
     `);
+
+    // Create UI State tables
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ui_states (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        state_id TEXT UNIQUE NOT NULL,
+        data_json TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS component_instances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        instance_id TEXT UNIQUE NOT NULL,
+        component_id TEXT NOT NULL,
+        state_id TEXT NOT NULL,
+        session_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create UI State indexes
+    const uiStateIndexes = [
+      "CREATE INDEX IF NOT EXISTS idx_ui_states_state_id ON ui_states(state_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ui_states_updated_at ON ui_states(updated_at)",
+      "CREATE INDEX IF NOT EXISTS idx_component_instances_instance_id ON component_instances(instance_id)",
+      "CREATE INDEX IF NOT EXISTS idx_component_instances_component_id ON component_instances(component_id)",
+      "CREATE INDEX IF NOT EXISTS idx_component_instances_state_id ON component_instances(state_id)",
+      "CREATE INDEX IF NOT EXISTS idx_component_instances_session_id ON component_instances(session_id)"
+    ];
+
+    for (const index of uiStateIndexes) {
+      this.db.exec(index);
+    }
+
+    // Create trigger to automatically update updated_at timestamp
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS update_ui_states_timestamp
+      AFTER UPDATE ON ui_states
+      FOR EACH ROW
+      BEGIN
+        UPDATE ui_states SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+      END
+    `);
   }
 
   // Upsert email with attachments
@@ -663,6 +709,133 @@ export class DatabaseManager {
 
     const query = this.db.prepare(sql);
     query.run(params);
+  }
+
+  // ============================================================================
+  // UI State Operations
+  // ============================================================================
+
+  /**
+   * Get UI state by ID
+   */
+  public getUIState(stateId: string): any | null {
+    const query = this.db.prepare(`
+      SELECT data_json
+      FROM ui_states
+      WHERE state_id = $stateId
+    `);
+
+    const result = query.get({ $stateId: stateId }) as { data_json: string } | undefined;
+
+    if (!result) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(result.data_json);
+    } catch (error) {
+      console.error(`Error parsing UI state ${stateId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Set/update UI state
+   */
+  public setUIState(stateId: string, data: any): void {
+    const dataJson = JSON.stringify(data);
+
+    const query = this.db.prepare(`
+      INSERT INTO ui_states (state_id, data_json, created_at, updated_at)
+      VALUES ($stateId, $dataJson, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(state_id) DO UPDATE SET
+        data_json = $dataJson,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    query.run({ $stateId: stateId, $dataJson: dataJson });
+  }
+
+  /**
+   * List all UI states
+   */
+  public listUIStates(): Array<{ stateId: string; updatedAt: string }> {
+    const query = this.db.prepare(`
+      SELECT state_id as stateId, updated_at as updatedAt
+      FROM ui_states
+      ORDER BY updated_at DESC
+    `);
+
+    return query.all() as Array<{ stateId: string; updatedAt: string }>;
+  }
+
+  /**
+   * Delete UI state
+   */
+  public deleteUIState(stateId: string): void {
+    const query = this.db.prepare(`
+      DELETE FROM ui_states
+      WHERE state_id = $stateId
+    `);
+
+    query.run({ $stateId: stateId });
+  }
+
+  /**
+   * Register a component instance
+   */
+  public registerComponentInstance(instance: {
+    instanceId: string;
+    componentId: string;
+    stateId: string;
+    sessionId?: string;
+  }): void {
+    const query = this.db.prepare(`
+      INSERT INTO component_instances (instance_id, component_id, state_id, session_id, created_at)
+      VALUES ($instanceId, $componentId, $stateId, $sessionId, CURRENT_TIMESTAMP)
+      ON CONFLICT(instance_id) DO NOTHING
+    `);
+
+    query.run({
+      $instanceId: instance.instanceId,
+      $componentId: instance.componentId,
+      $stateId: instance.stateId,
+      $sessionId: instance.sessionId || null
+    });
+  }
+
+  /**
+   * Get component instances by session ID
+   */
+  public getComponentInstancesBySession(sessionId: string): Array<{
+    instanceId: string;
+    componentId: string;
+    stateId: string;
+  }> {
+    const query = this.db.prepare(`
+      SELECT instance_id as instanceId, component_id as componentId, state_id as stateId
+      FROM component_instances
+      WHERE session_id = $sessionId
+      ORDER BY created_at DESC
+    `);
+
+    return query.all({ $sessionId: sessionId }) as Array<{
+      instanceId: string;
+      componentId: string;
+      stateId: string;
+    }>;
+  }
+
+  /**
+   * Delete old component instances
+   */
+  public pruneOldComponentInstances(daysOld: number = 7): void {
+    const query = this.db.prepare(`
+      DELETE FROM component_instances
+      WHERE created_at < datetime('now', '-' || $days || ' days')
+    `);
+
+    query.run({ $days: daysOld });
   }
 
   // Close database connection

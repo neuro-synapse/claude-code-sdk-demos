@@ -1,6 +1,7 @@
 // ccsdk/listeners-manager.ts
 import { readdir, watch } from "fs/promises";
 import { join } from "path";
+import Anthropic from "@anthropic-ai/sdk";
 import type {
   ListenerConfig,
   ListenerModule,
@@ -12,6 +13,7 @@ import type {
 } from "../agent/custom_scripts/types";
 import type { ImapManager } from "../database/imap-manager";
 import type { DatabaseManager } from "../database/database-manager";
+import type { UIStateManager } from "./ui-state-manager";
 import { LogWriter, type ListenerLogEntry } from "./log-writer";
 
 /**
@@ -25,18 +27,21 @@ export class ListenersManager {
   private watcherActive = false;
   private imapManager: ImapManager;
   private databaseManager: DatabaseManager;
+  private uiStateManager?: UIStateManager;
   private logWriter: LogWriter;
 
   constructor(
     notificationCallback: ((notification: any) => void) | undefined,
     imapManager: ImapManager,
     databaseManager: DatabaseManager,
-    logBroadcastCallback?: (log: ListenerLogEntry & { listenerId: string; listenerName: string }) => void
+    logBroadcastCallback?: (log: ListenerLogEntry & { listenerId: string; listenerName: string }) => void,
+    uiStateManager?: UIStateManager
   ) {
     this.notificationCallback = notificationCallback;
     this.imapManager = imapManager;
     this.databaseManager = databaseManager;
     this.logBroadcastCallback = logBroadcastCallback;
+    this.uiStateManager = uiStateManager;
     this.logWriter = new LogWriter(this.listenersDir);
   }
 
@@ -300,13 +305,70 @@ export class ListenersManager {
       },
 
       callAgent: async <T = any>(options: SubagentOptions<T>): Promise<T> => {
-        console.log(`[ListenerContext] STUB callAgent() called by ${listenerConfig.id}:`, {
+        console.log(`[ListenerContext] callAgent() called by ${listenerConfig.id}:`, {
           model: options.model || "haiku",
           promptLength: options.prompt.length,
           schema: options.schema
         });
-        // TODO: Implement Claude API call with structured output
-        throw new Error("callAgent() not yet implemented");
+
+        const anthropic = new Anthropic({
+          apiKey: process.env.ANTHROPIC_API_KEY
+        });
+
+        const modelMap: Record<string, string> = {
+          opus: "claude-opus-4-20250514",
+          sonnet: "claude-sonnet-4-20250514",
+          haiku: "claude-3-5-haiku-20241022"
+        };
+
+        const model = modelMap[options.model || "haiku"];
+
+        const response = await anthropic.messages.create({
+          model,
+          max_tokens: 4096,
+          messages: [
+            {
+              role: "user",
+              content: options.prompt
+            }
+          ],
+          tools: [
+            {
+              name: "respond",
+              description: "Respond with structured data matching the schema",
+              input_schema: options.schema
+            }
+          ],
+          tool_choice: { type: "tool", name: "respond" }
+        });
+
+        // Extract structured response from tool use
+        const toolUse = response.content.find((block) => block.type === "tool_use");
+        if (!toolUse || toolUse.type !== "tool_use") {
+          throw new Error("Agent did not return structured response");
+        }
+
+        console.log(`[ListenerContext] callAgent() completed for ${listenerConfig.id}`);
+        return toolUse.input as T;
+      },
+
+      // UI State operations
+      uiState: {
+        get: async <T = any>(stateId: string): Promise<T | null> => {
+          if (!this.uiStateManager) {
+            console.warn('[ListenerContext] UIStateManager not available');
+            return null;
+          }
+          return await this.uiStateManager.getState<T>(stateId);
+        },
+
+        set: async <T = any>(stateId: string, data: T): Promise<void> => {
+          if (!this.uiStateManager) {
+            console.warn('[ListenerContext] UIStateManager not available');
+            return;
+          }
+          await this.uiStateManager.setState<T>(stateId, data);
+        }
       }
     };
   }

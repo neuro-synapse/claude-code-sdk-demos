@@ -76,13 +76,7 @@ export function EmailViewer({ email, onClose }: EmailViewerProps) {
   const displayEmail = fullEmail || email;
 
   if (!displayEmail) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 border-r border-gray-200">
-        <div className="text-center text-gray-400">
-          <p className="text-sm">Select an email to view</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const formatDate = (dateString: string) => {
@@ -98,9 +92,18 @@ export function EmailViewer({ email, onClose }: EmailViewerProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-white border-r border-gray-200">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black bg-opacity-30 z-40"
+        onClick={onClose}
+      />
+
+      {/* Email Viewer Modal */}
+      <div className="fixed inset-0 flex items-center justify-center z-50 p-8">
+        <div className="w-full max-w-4xl h-full bg-white rounded-lg shadow-2xl flex flex-col border border-gray-300">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <h2 className="text-lg font-semibold mb-2">
@@ -138,8 +141,8 @@ export function EmailViewer({ email, onClose }: EmailViewerProps) {
         </div>
       </div>
 
-      {/* Email Body */}
-      <div className="flex-1 overflow-y-auto">
+          {/* Email Body */}
+          <div className="flex-1 overflow-y-auto">
         {isScreenshotMode ? (
           <pre className="whitespace-pre-wrap font-sans text-sm text-gray-900 p-6">
             {getPlaceholderBodyText()}
@@ -155,7 +158,9 @@ export function EmailViewer({ email, onClose }: EmailViewerProps) {
             {displayEmail.body_text || displayEmail.snippet || 'No content available'}
           </pre>
         )}
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
