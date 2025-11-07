@@ -1,6 +1,7 @@
 import React from 'react';
 import { Inbox, Mail, Camera, CameraOff } from 'lucide-react';
 import { useScreenshotMode } from '../context/ScreenshotModeContext';
+import { ActiveListenersPanel } from './ActiveListenersPanel';
 import {
   getPlaceholderEmail,
   getPlaceholderName,
@@ -72,6 +73,9 @@ export function InboxView({ emails, onEmailSelect, selectedEmailId }: InboxViewP
           )}
         </div>
       </div>
+
+      {/* Active Listeners Panel */}
+      <ActiveListenersPanel />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">

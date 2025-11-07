@@ -131,3 +131,6 @@ Thumbs.db
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+# Listener logs with personal email data
+agent/custom_scripts/listeners/.logs/
+agent/custom_scripts/listeners/.logs/*.jsonl

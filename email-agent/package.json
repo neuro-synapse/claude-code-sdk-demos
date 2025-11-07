@@ -24,6 +24,7 @@
   "description": "",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.28",
+    "@anthropic-ai/sdk": "^0.68.0",
     "@tailwindcss/postcss": "^4.1.11",
     "dotenv": "^17.2.1",
     "jotai": "^2.14.0",

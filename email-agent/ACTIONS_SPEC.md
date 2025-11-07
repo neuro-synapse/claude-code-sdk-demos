@@ -1,15 +1,26 @@
-# Actions Specification
+# Actions Specification (v2)
 
 ## Overview
 
-Actions are interactive UI elements that the agent can dynamically create to provide users with one-click operations in the chat interface. Each action is defined as a TypeScript file that exports an action configuration.
+Actions are **highly specific, executable operations** that users can trigger with one click in the chat interface. Actions are deeply personalized to the user's actual workflow, vendors, customers, and business processes.
 
-## Purpose
+Examples:
+- ✅ "Send payment reminder to ACME Corp for Invoice #2024-001 (15 days overdue)"
+- ✅ "Forward bug reports to engineering team with priority assessment"
+- ✅ "Archive newsletters from TechCrunch, Morning Brew, and Hacker News older than 30 days"
+- ❌ "Send email" (too generic)
+- ❌ "Archive emails" (too generic)
 
-- Provide contextual, interactive buttons in chat messages
-- Enable one-click operations like searching emails, drafting replies, setting reminders
-- Allow the agent to create custom workflows dynamically
-- Give users quick access to common operations without typing
+Actions use a **hybrid template + instantiation model**: templates define user-specific patterns with handler functions, and the chat agent instantiates them with precise parameters during conversation.
+
+## Core Principles
+
+- **User-Specific**: Templates are tailored to the user's specific workflows, not generic operations
+- **Highly Contextual**: Actions are precise and context-rich, not vague (e.g., "Send payment reminder to ACME Corp for Invoice #2024-001" not "Send email")
+- **One-Click Execution**: Clicking an action directly executes code with all parameters pre-filled
+- **Template-Based**: User-specific templates instantiated with precise parameters by the agent
+- **Full Capabilities**: Access to email operations, AI, and external APIs
+- **Fully Logged**: All executions tracked for audit trail and debugging
 
 ## Architecture
 
@@ -18,33 +29,55 @@ Actions are interactive UI elements that the agent can dynamically create to pro
 ```
 agent/custom_scripts/
 ├── actions/
-│   ├── view-urgent-emails.ts
-│   ├── draft-reply-to-boss.ts
-│   ├── schedule-meeting.ts
-│   └── archive-newsletters.ts
-└── types.ts
+│   ├── send-payment-reminder-to-acme.ts          # Send payment reminder to ACME Corp
+│   ├── archive-old-newsletters.ts                # Archive newsletters older than 30 days
+│   ├── forward-bugs-to-engineering.ts            # Forward bug reports to engineering team
+│   ├── summarize-weekly-updates-from-ceo.ts      # Summarize CEO's weekly updates
+│   └── label-urgent-customer-support.ts          # Label urgent customer support emails
+├── types.ts                                      # Shared type definitions
+└── .logs/
+    └── actions/                                  # Action execution logs (JSONL)
 ```
 
-### File Format
+### Template File Structure
 
-Each action file must export an `action` object conforming to the `ActionConfig` interface.
+Each action template exports:
+1. **`config`** - Template metadata and parameter schema
+2. **`handler`** - Async function that executes the action
 
 ```typescript
 // agent/custom_scripts/actions/example-action.ts
-import type { ActionConfig } from "../types";
+import type { ActionTemplate, ActionContext, ActionResult } from "../types";
 
-export const action: ActionConfig = {
-  id: "unique_action_id",
-  label: "Button Label",
-  description: "What this action does",
+export const config: ActionTemplate = {
+  id: "example_action",
+  name: "Example Action Template",
+  description: "What this template does",
   icon: "🚀",
-  type: "search", // or other action type
-  style: "primary",
-  params: {
-    // Action-specific parameters
-  },
-  enabled: true
+  parameterSchema: {
+    // JSON schema for required parameters
+    type: "object",
+    properties: {
+      recipient: { type: "string", description: "Email recipient" },
+      subject: { type: "string", description: "Email subject" }
+    },
+    required: ["recipient"]
+  }
 };
+
+export async function handler(
+  params: Record<string, any>,
+  context: ActionContext
+): Promise<ActionResult> {
+  // Execute action logic using context methods
+  // Return structured result
+
+  return {
+    success: true,
+    message: "Action completed successfully",
+    data: { /* optional structured data */ }
+  };
+}
 ```
 
 ## Type Definitions
@@ -52,617 +85,1250 @@ export const action: ActionConfig = {
 ```typescript
 // agent/custom_scripts/types.ts
 
-export interface ActionConfig {
-  // Unique identifier for this action
+/**
+ * Action Template Definition
+ * Defines a reusable action pattern that can be instantiated with parameters
+ */
+export interface ActionTemplate {
+  // Unique identifier for this action template
   id: string;
 
-  // Text displayed on the button
-  label: string;
+  // Human-readable name
+  name: string;
 
-  // Optional description shown on hover or in action list
-  description?: string;
+  // Description of what this template does
+  description: string;
 
-  // Optional emoji or icon identifier
+  // Optional emoji or icon
   icon?: string;
 
-  // Type of action to perform
-  type: "search" | "draft_email" | "show_email" | "set_reminder" | "archive" | "custom";
+  // JSON Schema defining required/optional parameters
+  parameterSchema: {
+    type: "object";
+    properties: Record<string, {
+      type: string;
+      description: string;
+      enum?: string[];
+      default?: any;
+    }>;
+    required?: string[];
+  };
+}
 
-  // Parameters passed to the action handler
+/**
+ * Action Instance
+ * Created by agent during conversation by providing parameters to a template
+ */
+export interface ActionInstance {
+  // Unique ID for this specific action instance
+  instanceId: string;
+
+  // Reference to template ID
+  templateId: string;
+
+  // Label shown on button (generated by agent)
+  label: string;
+
+  // Optional description (more context)
+  description?: string;
+
+  // Parameters to pass to handler
   params: Record<string, any>;
 
-  // Button styling variant
+  // Button styling
   style?: "primary" | "secondary" | "danger";
 
-  // Whether this action is enabled (default: true)
-  enabled?: boolean;
+  // Session ID this action belongs to
+  sessionId: string;
+
+  // Timestamp when created
+  createdAt: string;
+}
+
+/**
+ * Action Context
+ * Provides capabilities to action handlers (similar to ListenerContext)
+ */
+export interface ActionContext {
+  // Session information
+  sessionId: string;
+
+  // Email API operations
+  emailAPI: {
+    getInbox(options?: { limit?: number; includeRead?: boolean }): Promise<Email[]>;
+    searchEmails(criteria: EmailSearchCriteria): Promise<Email[]>;
+    searchWithGmailQuery(query: string): Promise<Email[]>;
+    getEmailsByIds(ids: string[]): Promise<Email[]>;
+    getEmailById(id: string): Promise<Email | null>;
+  };
+
+  // Direct email operations (similar to listeners)
+  archiveEmail(emailId: string): Promise<void>;
+  starEmail(emailId: string): Promise<void>;
+  unstarEmail(emailId: string): Promise<void>;
+  markAsRead(emailId: string): Promise<void>;
+  markAsUnread(emailId: string): Promise<void>;
+  addLabel(emailId: string, label: string): Promise<void>;
+  removeLabel(emailId: string, label: string): Promise<void>;
+
+  // Send emails
+  sendEmail(options: {
+    to: string;
+    subject: string;
+    body: string;
+    cc?: string;
+    bcc?: string;
+    replyTo?: string;
+  }): Promise<{ messageId: string }>;
+
+  // AI/Agent capabilities
+  callAgent<T = any>(options: {
+    prompt: string;
+    systemPrompt?: string;
+    tools?: string[];
+    maxTokens?: number;
+  }): Promise<T>;
+
+  // Session messaging (inject messages into chat)
+  addUserMessage(content: string): void;
+  addAssistantMessage(content: string): void;
+  addSystemMessage(content: string): void;
+
+  // Notifications
+  notify(message: string, options?: {
+    priority?: "low" | "normal" | "high";
+    type?: "info" | "success" | "warning" | "error";
+  }): void;
+
+  // External API access
+  fetch(url: string, options?: RequestInit): Promise<Response>;
+
+  // Logging
+  log(message: string, level?: "info" | "warn" | "error"): void;
+}
+
+/**
+ * Action Result
+ * Returned by handler to indicate execution outcome
+ */
+export interface ActionResult {
+  // Whether action succeeded
+  success: boolean;
+
+  // Human-readable message describing result
+  message: string;
+
+  // Optional structured data to return
+  data?: Record<string, any>;
+
+  // Optional array of follow-up actions to suggest
+  suggestedActions?: ActionInstance[];
+
+  // Whether to refresh inbox after this action
+  refreshInbox?: boolean;
+}
+
+/**
+ * Action Log Entry
+ * Stored in .logs/actions/ for audit trail
+ */
+export interface ActionLogEntry {
+  timestamp: string;
+  instanceId: string;
+  templateId: string;
+  sessionId: string;
+  params: Record<string, any>;
+  result: ActionResult;
+  duration: number; // milliseconds
+  error?: string;
 }
 ```
 
-## Action Types
+## Action Lifecycle
 
-### 1. `search`
+### 1. Agent Creates Action Instance
 
-Searches emails using Gmail query syntax.
+During chat conversation, agent identifies need for specific action:
 
-**Parameters:**
-- `query` (string): Gmail search query
-
-**Example:**
 ```typescript
-export const action: ActionConfig = {
-  id: "search_urgent",
-  label: "View Urgent Emails",
-  type: "search",
-  params: {
-    query: "from:boss@company.com urgent"
+// Agent's internal process (conceptual)
+// User: "I need to follow up on the ACME Corp invoice payment"
+// Agent searches emails, finds Invoice #2024-001 is 15 days overdue
+
+// Agent creates action instances via special format in chat response
+{
+  type: "actions",
+  actions: [
+    {
+      instanceId: "act_abc123",
+      templateId: "send_payment_reminder_acme",
+      label: "Send payment reminder to ACME Corp for Invoice #2024-001",
+      description: "Invoice #2024-001 ($5,000) is 15 days past due",
+      params: {
+        invoiceNumber: "INV-2024-001",
+        amount: "$5,000",
+        dueDate: "December 15, 2024",
+        daysPastDue: 15
+      },
+      style: "primary",
+      sessionId: "session_xyz",
+      createdAt: "2025-01-06T10:30:00Z"
+    }
+  ]
+}
+```
+
+### 2. Frontend Renders Action Buttons
+
+Client receives action instances via WebSocket and renders as interactive buttons:
+
+```typescript
+// Message type from server → client
+{
+  type: "action_instances",
+  actions: ActionInstance[],
+  sessionId: string
+}
+```
+
+### 3. User Clicks Action
+
+Frontend sends execution request:
+
+```typescript
+// Message type from client → server
+{
+  type: "execute_action",
+  instanceId: "act_abc123",
+  sessionId: "session_xyz"
+}
+```
+
+### 4. Backend Executes Action
+
+```typescript
+// ActionsManager workflow:
+// 1. Look up action instance
+// 2. Load template by templateId
+// 3. Create ActionContext with full capabilities
+// 4. Call template's handler(params, context)
+// 5. Log execution to .logs/actions/
+// 6. Return result to client
+// 7. Inject result message into chat session
+```
+
+### 5. Result Displayed
+
+Result appears as new chat message and UI updates accordingly.
+
+## Complete Template Examples
+
+### 1. Send Payment Reminder to ACME Corp
+
+```typescript
+// agent/custom_scripts/actions/send-payment-reminder-to-acme.ts
+import type { ActionTemplate, ActionContext, ActionResult } from "../types";
+
+export const config: ActionTemplate = {
+  id: "send_payment_reminder_acme",
+  name: "Send Payment Reminder to ACME Corp",
+  description: "Send a payment reminder email to ACME Corp for overdue invoices",
+  icon: "💰",
+  parameterSchema: {
+    type: "object",
+    properties: {
+      invoiceNumber: {
+        type: "string",
+        description: "Invoice number (e.g., INV-2024-001)"
+      },
+      amount: {
+        type: "string",
+        description: "Invoice amount (e.g., '$5,000')"
+      },
+      dueDate: {
+        type: "string",
+        description: "Original due date"
+      },
+      daysPastDue: {
+        type: "number",
+        description: "Number of days past due"
+      }
+    },
+    required: ["invoiceNumber", "amount", "dueDate", "daysPastDue"]
   }
 };
-```
 
-### 2. `draft_email`
+export async function handler(
+  params: Record<string, any>,
+  context: ActionContext
+): Promise<ActionResult> {
+  const { invoiceNumber, amount, dueDate, daysPastDue } = params;
+  const acmeEmail = "accounts.payable@acmecorp.com";
 
-Opens a draft email composer.
+  context.log(`Sending payment reminder for ${invoiceNumber} to ACME Corp`);
 
-**Parameters:**
-- `emailId` (string, optional): ID of email to reply to
-- `to` (string, optional): Recipient email address
-- `subject` (string, optional): Email subject
-- `template` (string, optional): Template identifier
+  const body = `Hi ACME Accounts Payable Team,
 
-**Example:**
-```typescript
-export const action: ActionConfig = {
-  id: "draft_reply",
-  label: "Draft Reply",
-  type: "draft_email",
-  params: {
-    emailId: "abc123@example.com",
-    to: "boss@company.com"
+This is a friendly reminder that Invoice ${invoiceNumber} for ${amount} was due on ${dueDate} and is now ${daysPastDue} days past due.
+
+Please process payment at your earliest convenience. If you have already sent payment, please disregard this notice.
+
+Invoice Details:
+- Invoice #: ${invoiceNumber}
+- Amount: ${amount}
+- Due Date: ${dueDate}
+- Days Past Due: ${daysPastDue}
+
+If you have any questions or need a copy of the invoice, please let me know.
+
+Best regards`;
+
+  try {
+    const result = await context.sendEmail({
+      to: acmeEmail,
+      subject: `Payment Reminder: Invoice ${invoiceNumber} - ${daysPastDue} Days Past Due`,
+      body
+    });
+
+    context.notify(`Payment reminder sent to ACME Corp for ${invoiceNumber}`, {
+      type: "success",
+      priority: "normal"
+    });
+
+    return {
+      success: true,
+      message: `Payment reminder sent to ACME Corp for ${invoiceNumber}`,
+      data: { messageId: result.messageId, invoiceNumber }
+    };
+  } catch (error) {
+    context.log(`Failed to send payment reminder: ${error}`, "error");
+
+    return {
+      success: false,
+      message: `Failed to send payment reminder: ${error.message}`
+    };
   }
-};
+}
 ```
 
-### 3. `show_email`
-
-Displays a specific email.
-
-**Parameters:**
-- `emailId` (string): Email message ID
-
-**Example:**
-```typescript
-export const action: ActionConfig = {
-  id: "show_email_abc",
-  label: "Read Email",
-  type: "show_email",
-  params: {
-    emailId: "abc123@example.com"
-  }
-};
-```
-
-### 4. `set_reminder`
-
-Sets a reminder for an email.
-
-**Parameters:**
-- `emailId` (string): Email message ID
-- `duration` (string): Time duration (e.g., "1h", "tomorrow", "next week")
-
-**Example:**
-```typescript
-export const action: ActionConfig = {
-  id: "remind_later",
-  label: "Remind Me Later",
-  type: "set_reminder",
-  params: {
-    emailId: "abc123@example.com",
-    duration: "1h"
-  }
-};
-```
-
-### 5. `archive`
-
-Archives emails matching a query.
-
-**Parameters:**
-- `query` (string): Gmail search query for emails to archive
-- `emailId` (string, optional): Specific email ID to archive
-
-**Example:**
-```typescript
-export const action: ActionConfig = {
-  id: "archive_newsletters",
-  label: "Archive Newsletters",
-  type: "archive",
-  params: {
-    query: "newsletter OR unsubscribe"
-  }
-};
-```
-
-### 6. `custom`
-
-Custom action with flexible parameters.
-
-**Parameters:**
-- `action` (string): Custom action identifier
-- Additional parameters as needed
-
-**Example:**
-```typescript
-export const action: ActionConfig = {
-  id: "open_calendar",
-  label: "Open Calendar",
-  type: "custom",
-  params: {
-    action: "open_url",
-    url: "https://calendar.google.com"
-  }
-};
-```
-
-## Complete Examples
-
-### Simple Search Action
-
-```typescript
-// agent/custom_scripts/actions/view-unread.ts
-import type { ActionConfig } from "../types";
-
-export const action: ActionConfig = {
-  id: "view_unread",
-  label: "View Unread",
-  description: "Show all unread emails",
-  icon: "📬",
-  type: "search",
-  style: "primary",
-  params: {
-    query: "is:unread"
-  },
-  enabled: true
-};
-```
-
-### Context-Specific Action
-
-```typescript
-// agent/custom_scripts/actions/draft-boss-reply.ts
-import type { ActionConfig } from "../types";
-
-export const action: ActionConfig = {
-  id: "draft_boss_reply",
-  label: "Reply to Boss",
-  description: "Draft a professional reply to latest email from boss",
-  icon: "✍️",
-  type: "draft_email",
-  style: "primary",
-  params: {
-    to: "boss@company.com",
-    template: "professional_reply"
-  },
-  enabled: true
-};
-```
-
-### Bulk Operation Action
+### 2. Archive Old Newsletters
 
 ```typescript
 // agent/custom_scripts/actions/archive-old-newsletters.ts
-import type { ActionConfig } from "../types";
+import type { ActionTemplate, ActionContext, ActionResult } from "../types";
 
-export const action: ActionConfig = {
+export const config: ActionTemplate = {
   id: "archive_old_newsletters",
-  label: "Archive Old Newsletters",
-  description: "Archives all newsletters older than 30 days",
-  icon: "📦",
-  type: "archive",
-  style: "secondary",
-  params: {
-    query: "older_than:30d (newsletter OR unsubscribe)"
-  },
-  enabled: true
+  name: "Archive Old Newsletters",
+  description: "Archive newsletter emails older than 30 days from TechCrunch, Morning Brew, and Hacker News",
+  icon: "📰",
+  parameterSchema: {
+    type: "object",
+    properties: {
+      daysOld: {
+        type: "number",
+        description: "Archive newsletters older than this many days",
+        default: 30
+      }
+    },
+    required: []
+  }
 };
+
+export async function handler(
+  params: Record<string, any>,
+  context: ActionContext
+): Promise<ActionResult> {
+  const { daysOld = 30 } = params;
+
+  // Calculate date threshold
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+  const dateStr = cutoffDate.toISOString().split('T')[0].replace(/-/g, '/');
+
+  // Gmail query for newsletters from specific senders older than threshold
+  const query = `(from:newsletter@techcrunch.com OR from:crew@morningbrew.com OR from:noreply@hackernewsletter.com) before:${dateStr}`;
+
+  context.log(`Archiving newsletters older than ${daysOld} days`);
+
+  try {
+    const emails = await context.emailAPI.searchWithGmailQuery(query);
+
+    context.log(`Found ${emails.length} old newsletters to archive`);
+
+    let archived = 0;
+    for (const email of emails) {
+      await context.archiveEmail(email.message_id);
+      archived++;
+    }
+
+    context.notify(`Archived ${archived} old newsletters`, {
+      type: "success",
+      priority: "normal"
+    });
+
+    return {
+      success: true,
+      message: `Archived ${archived} newsletters older than ${daysOld} days`,
+      data: {
+        archivedCount: archived,
+        daysOld,
+        sources: ["TechCrunch", "Morning Brew", "Hacker News"]
+      },
+      refreshInbox: true
+    };
+  } catch (error) {
+    context.log(`Failed to archive newsletters: ${error}`, "error");
+    return {
+      success: false,
+      message: `Failed to archive newsletters: ${error.message}`
+    };
+  }
+}
 ```
 
-### Conditional Action
+### 3. Summarize CEO Weekly Updates
 
 ```typescript
-// agent/custom_scripts/actions/urgent-action.ts
-import type { ActionConfig } from "../types";
+// agent/custom_scripts/actions/summarize-weekly-updates-from-ceo.ts
+import type { ActionTemplate, ActionContext, ActionResult } from "../types";
 
-export const action: ActionConfig = {
-  id: "view_urgent_today",
-  label: "Today's Urgent Items",
-  description: "Shows urgent emails received today",
-  icon: "🚨",
-  type: "search",
-  style: "danger",
-  params: {
-    query: "newer_than:1d (urgent OR asap OR critical)"
-  },
-  enabled: true
+export const config: ActionTemplate = {
+  id: "summarize_ceo_weekly_updates",
+  name: "Summarize CEO Weekly Updates",
+  description: "Generate a concise summary of the CEO's weekly update emails focusing on key initiatives and decisions",
+  icon: "📊",
+  parameterSchema: {
+    type: "object",
+    properties: {
+      weeksBack: {
+        type: "number",
+        description: "Number of weeks to look back (default: 4)",
+        default: 4
+      }
+    },
+    required: []
+  }
 };
+
+export async function handler(
+  params: Record<string, any>,
+  context: ActionContext
+): Promise<ActionResult> {
+  const { weeksBack = 4 } = params;
+
+  context.log(`Finding CEO weekly updates from the last ${weeksBack} weeks`);
+
+  try {
+    // Search for CEO updates (assuming CEO email is sarah.chen@company.com)
+    const query = `from:sarah.chen@company.com subject:"Weekly Update" newer_than:${weeksBack * 7}d`;
+    const emails = await context.emailAPI.searchWithGmailQuery(query);
+
+    if (emails.length === 0) {
+      return {
+        success: false,
+        message: `No CEO weekly updates found in the last ${weeksBack} weeks`
+      };
+    }
+
+    context.log(`Found ${emails.length} CEO weekly updates`);
+
+    // Sort by date, most recent first
+    emails.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+
+    const emailContent = emails.map((e, idx) => {
+      const date = new Date(e.received_at).toLocaleDateString();
+      return `## Week ${emails.length - idx} (${date})\nSubject: ${e.subject}\n\n${e.body_text}`;
+    }).join("\n\n---\n\n");
+
+    const prompt = `You are reviewing the CEO's weekly update emails over the past ${weeksBack} weeks.
+
+Please provide a comprehensive summary with the following sections:
+1. **Key Strategic Initiatives**: Major projects and strategic priorities mentioned
+2. **Important Decisions**: Key decisions made by leadership
+3. **Company Performance**: Highlights about metrics, growth, or achievements
+4. **Team Updates**: Significant hiring, org changes, or team accomplishments
+5. **Action Items for Leadership**: Any calls to action or requests for the leadership team
+
+Here are the emails:
+
+${emailContent}`;
+
+    const summary = await context.callAgent<string>({
+      prompt,
+      maxTokens: 2000
+    });
+
+    // Inject summary into chat
+    context.addAssistantMessage(`📊 **CEO Weekly Updates Summary (Last ${weeksBack} weeks)**\n\n${summary}`);
+
+    return {
+      success: true,
+      message: `Summarized ${emails.length} CEO weekly updates from the last ${weeksBack} weeks`,
+      data: {
+        summary,
+        emailCount: emails.length,
+        weeksBack
+      }
+    };
+  } catch (error) {
+    context.log(`Failed to summarize CEO updates: ${error}`, "error");
+    return {
+      success: false,
+      message: `Failed to generate summary: ${error.message}`
+    };
+  }
+}
+```
+
+### 4. Label Urgent Customer Support Emails
+
+```typescript
+// agent/custom_scripts/actions/label-urgent-customer-support.ts
+import type { ActionTemplate, ActionContext, ActionResult } from "../types";
+
+export const config: ActionTemplate = {
+  id: "label_urgent_customer_support",
+  name: "Label Urgent Customer Support Emails",
+  description: "Identify and label customer support emails that contain urgent keywords or are from VIP customers",
+  icon: "🚨",
+  parameterSchema: {
+    type: "object",
+    properties: {
+      hoursBack: {
+        type: "number",
+        description: "How many hours back to check (default: 24)",
+        default: 24
+      }
+    },
+    required: []
+  }
+};
+
+export async function handler(
+  params: Record<string, any>,
+  context: ActionContext
+): Promise<ActionResult> {
+  const { hoursBack = 24 } = params;
+
+  context.log(`Checking for urgent customer support emails from the last ${hoursBack} hours`);
+
+  try {
+    // Search for support emails from the last N hours
+    const query = `to:support@company.com newer_than:${Math.ceil(hoursBack / 24)}d`;
+    const emails = await context.emailAPI.searchWithGmailQuery(query);
+
+    context.log(`Found ${emails.length} support emails`);
+
+    // VIP customer domains
+    const vipDomains = ["@bigclient.com", "@enterprise.com", "@fortune500.com"];
+
+    // Urgent keywords
+    const urgentKeywords = [
+      "urgent", "asap", "critical", "emergency", "down",
+      "not working", "broken", "immediately", "production issue",
+      "security breach", "data loss"
+    ];
+
+    const urgentEmails = emails.filter(email => {
+      // Check if from VIP domain
+      const isVIP = vipDomains.some(domain => email.from_address.includes(domain));
+
+      // Check for urgent keywords in subject or body
+      const text = `${email.subject} ${email.body_text}`.toLowerCase();
+      const hasUrgentKeyword = urgentKeywords.some(keyword => text.includes(keyword));
+
+      return isVIP || hasUrgentKeyword;
+    });
+
+    context.log(`Identified ${urgentEmails.length} urgent support emails`);
+
+    // Label urgent emails
+    for (const email of urgentEmails) {
+      await context.addLabel(email.message_id, "URGENT");
+      await context.starEmail(email.message_id);
+    }
+
+    // Create a summary message
+    const vipCount = urgentEmails.filter(e =>
+      vipDomains.some(domain => e.from_address.includes(domain))
+    ).length;
+
+    const summaryMsg = urgentEmails.length > 0
+      ? `🚨 Labeled ${urgentEmails.length} urgent support emails (${vipCount} from VIP customers)`
+      : "No urgent support emails found";
+
+    context.notify(summaryMsg, {
+      type: urgentEmails.length > 0 ? "warning" : "info",
+      priority: urgentEmails.length > 0 ? "high" : "normal"
+    });
+
+    return {
+      success: true,
+      message: summaryMsg,
+      data: {
+        totalChecked: emails.length,
+        urgentFound: urgentEmails.length,
+        vipCount
+      },
+      refreshInbox: true
+    };
+  } catch (error) {
+    context.log(`Failed to label urgent support emails: ${error}`, "error");
+    return {
+      success: false,
+      message: `Failed to label urgent emails: ${error.message}`
+    };
+  }
+}
+```
+
+### 5. Forward Bug Reports to Engineering
+
+```typescript
+// agent/custom_scripts/actions/forward-bugs-to-engineering.ts
+import type { ActionTemplate, ActionContext, ActionResult } from "../types";
+
+export const config: ActionTemplate = {
+  id: "forward_bugs_to_engineering",
+  name: "Forward Bug Reports to Engineering",
+  description: "Forward customer bug reports to the engineering team with priority assessment and reproduction steps",
+  icon: "🐛",
+  parameterSchema: {
+    type: "object",
+    properties: {
+      emailId: {
+        type: "string",
+        description: "Bug report email to forward"
+      },
+      priority: {
+        type: "string",
+        description: "Bug priority level",
+        enum: ["P0 - Critical", "P1 - High", "P2 - Medium", "P3 - Low"]
+      },
+      affectedFeature: {
+        type: "string",
+        description: "Which feature/component is affected"
+      },
+      reproducible: {
+        type: "boolean",
+        description: "Whether the bug is reproducible"
+      }
+    },
+    required: ["emailId", "priority", "affectedFeature"]
+  }
+};
+
+export async function handler(
+  params: Record<string, any>,
+  context: ActionContext
+): Promise<ActionResult> {
+  const { emailId, priority, affectedFeature, reproducible = false } = params;
+
+  const engineeringTeam = "engineering@company.com";
+  const engineeringSlack = "#eng-bugs";
+
+  context.log(`Forwarding bug report to engineering team`);
+
+  try {
+    const email = await context.emailAPI.getEmailById(emailId);
+
+    if (!email) {
+      return {
+        success: false,
+        message: "Bug report email not found"
+      };
+    }
+
+    // Extract key info using AI
+    const analysisPrompt = `Analyze this bug report and extract:
+1. Steps to reproduce (if mentioned)
+2. Expected behavior
+3. Actual behavior
+4. User environment (browser, OS, version, etc.)
+5. Error messages or screenshots mentioned
+
+Bug Report:
+From: ${email.from_address}
+Subject: ${email.subject}
+
+${email.body_text}
+
+Provide the analysis in a structured format.`;
+
+    const analysis = await context.callAgent<string>({
+      prompt: analysisPrompt,
+      maxTokens: 1000
+    });
+
+    const forwardBody = `🐛 **Bug Report Forwarded from Customer Support**
+
+**Priority:** ${priority}
+**Affected Feature:** ${affectedFeature}
+**Reproducible:** ${reproducible ? "Yes" : "Unknown"}
+**Reporter:** ${email.from_address}
+**Reported:** ${new Date(email.received_at).toLocaleString()}
+
+---
+
+**AI Analysis:**
+
+${analysis}
+
+---
+
+**Original Email:**
+
+Subject: ${email.subject}
+
+${email.body_text}
+
+---
+
+Please investigate and update the ticket in Linear. Tag in ${engineeringSlack} when you have an update.`;
+
+    await context.sendEmail({
+      to: engineeringTeam,
+      subject: `[${priority}] Bug Report: ${affectedFeature} - ${email.subject}`,
+      body: forwardBody
+    });
+
+    // Add label to original email
+    await context.addLabel(emailId, "FORWARDED_TO_ENG");
+
+    context.notify(`Bug report forwarded to engineering team`, {
+      type: "success",
+      priority: priority.startsWith("P0") || priority.startsWith("P1") ? "high" : "normal"
+    });
+
+    return {
+      success: true,
+      message: `Bug report forwarded to engineering team with ${priority} priority`,
+      data: {
+        priority,
+        affectedFeature,
+        originalSender: email.from_address
+      }
+    };
+  } catch (error) {
+    context.log(`Failed to forward bug report: ${error}`, "error");
+    return {
+      success: false,
+      message: `Failed to forward bug report: ${error.message}`
+    };
+  }
+}
 ```
 
 ## ActionsManager Implementation
 
 ```typescript
 // ccsdk/actions-manager.ts
-import { readdir, watch } from "fs/promises";
+import { readdir, watch, appendFile, mkdir } from "fs/promises";
 import { join } from "path";
-import type { ActionConfig } from "../agent/custom_scripts/types";
+import { existsSync } from "fs";
+import type {
+  ActionTemplate,
+  ActionInstance,
+  ActionContext,
+  ActionResult,
+  ActionLogEntry
+} from "../agent/custom_scripts/types";
 
 export class ActionsManager {
   private actionsDir = join(process.cwd(), "agent/custom_scripts/actions");
-  private actions: Map<string, ActionConfig> = new Map();
-  private watchers: Set<() => void> = new Set();
+  private logsDir = join(process.cwd(), "agent/custom_scripts/.logs/actions");
+  private templates: Map<string, {
+    config: ActionTemplate;
+    handler: Function;
+  }> = new Map();
+  private instances: Map<string, ActionInstance> = new Map();
+
+  constructor() {
+    this.ensureLogsDir();
+  }
 
   /**
-   * Load all action files from the actions directory
+   * Ensure logs directory exists
    */
-  async loadAllActions(): Promise<ActionConfig[]> {
-    this.actions.clear();
+  private async ensureLogsDir() {
+    if (!existsSync(this.logsDir)) {
+      await mkdir(this.logsDir, { recursive: true });
+    }
+  }
+
+  /**
+   * Load all action templates from directory
+   */
+  async loadAllTemplates(): Promise<ActionTemplate[]> {
+    this.templates.clear();
 
     try {
       const files = await readdir(this.actionsDir);
 
       for (const file of files) {
         if (file.endsWith(".ts") && !file.startsWith("_")) {
-          await this.loadAction(file);
+          await this.loadTemplate(file);
         }
       }
     } catch (error) {
-      console.error("Error loading actions:", error);
+      console.error("Error loading action templates:", error);
     }
 
-    return Array.from(this.actions.values());
+    return Array.from(this.templates.values()).map(t => t.config);
   }
 
   /**
-   * Load a single action file
+   * Load a single template file
    */
-  private async loadAction(filename: string) {
+  private async loadTemplate(filename: string) {
     try {
       const filePath = join(this.actionsDir, filename);
-      // Cache bust for hot reload
       const module = await import(`${filePath}?t=${Date.now()}`);
 
-      if (module.action && module.action.id) {
-        this.actions.set(module.action.id, module.action);
-        console.log(`Loaded action: ${module.action.id}`);
+      if (module.config?.id && typeof module.handler === "function") {
+        this.templates.set(module.config.id, {
+          config: module.config,
+          handler: module.handler
+        });
+        console.log(`Loaded action template: ${module.config.id}`);
+      } else {
+        console.warn(`Invalid action template ${filename}: missing config or handler`);
       }
     } catch (error) {
-      console.error(`Error loading action ${filename}:`, error);
+      console.error(`Error loading template ${filename}:`, error);
     }
   }
 
   /**
-   * Get a specific action by ID
+   * Get template by ID
    */
-  getAction(id: string): ActionConfig | undefined {
-    return this.actions.get(id);
+  getTemplate(id: string): ActionTemplate | undefined {
+    return this.templates.get(id)?.config;
   }
 
   /**
-   * Get all enabled actions
+   * Get all templates
    */
-  getAllActions(): ActionConfig[] {
-    return Array.from(this.actions.values()).filter(a => a.enabled !== false);
+  getAllTemplates(): ActionTemplate[] {
+    return Array.from(this.templates.values()).map(t => t.config);
   }
 
   /**
-   * Watch for file changes and reload actions
+   * Register an action instance created by agent
    */
-  async watchActions(onChange: (actions: ActionConfig[]) => void) {
+  registerInstance(instance: ActionInstance): void {
+    this.instances.set(instance.instanceId, instance);
+  }
+
+  /**
+   * Get action instance by ID
+   */
+  getInstance(instanceId: string): ActionInstance | undefined {
+    return this.instances.get(instanceId);
+  }
+
+  /**
+   * Execute an action instance
+   */
+  async executeAction(
+    instanceId: string,
+    context: ActionContext
+  ): Promise<ActionResult> {
+    const startTime = Date.now();
+    const instance = this.instances.get(instanceId);
+
+    if (!instance) {
+      return {
+        success: false,
+        message: "Action instance not found"
+      };
+    }
+
+    const template = this.templates.get(instance.templateId);
+
+    if (!template) {
+      return {
+        success: false,
+        message: `Template "${instance.templateId}" not found`
+      };
+    }
+
+    let result: ActionResult;
+    let error: string | undefined;
+
+    try {
+      // Execute handler
+      context.log(`Executing action: ${instance.label}`);
+      result = await template.handler(instance.params, context);
+    } catch (err) {
+      error = err.message;
+      result = {
+        success: false,
+        message: `Action failed: ${error}`
+      };
+      context.log(`Action failed: ${error}`, "error");
+    }
+
+    const duration = Date.now() - startTime;
+
+    // Log execution
+    await this.logExecution({
+      timestamp: new Date().toISOString(),
+      instanceId: instance.instanceId,
+      templateId: instance.templateId,
+      sessionId: instance.sessionId,
+      params: instance.params,
+      result,
+      duration,
+      error
+    });
+
+    return result;
+  }
+
+  /**
+   * Log action execution to JSONL file
+   */
+  private async logExecution(entry: ActionLogEntry) {
+    try {
+      const date = new Date().toISOString().split("T")[0];
+      const logFile = join(this.logsDir, `${date}.jsonl`);
+      await appendFile(logFile, JSON.stringify(entry) + "\n");
+    } catch (error) {
+      console.error("Failed to log action execution:", error);
+    }
+  }
+
+  /**
+   * Watch for template file changes
+   */
+  async watchTemplates(onChange: (templates: ActionTemplate[]) => void) {
     try {
       const watcher = watch(this.actionsDir);
 
       for await (const event of watcher) {
-        console.log(`Action file ${event.eventType}: ${event.filename}`);
-
         if (event.filename?.endsWith(".ts")) {
-          const actions = await this.loadAllActions();
-          onChange(actions);
-          this.notifyWatchers();
+          console.log(`Action template ${event.eventType}: ${event.filename}`);
+          const templates = await this.loadAllTemplates();
+          onChange(templates);
         }
       }
     } catch (error) {
-      console.error("Error watching actions:", error);
+      console.error("Error watching action templates:", error);
     }
   }
 
   /**
-   * Register a callback for when actions change
+   * Get execution logs for a template
    */
-  onActionsChanged(callback: () => void) {
-    this.watchers.add(callback);
-    return () => this.watchers.delete(callback);
+  async getTemplateLogs(templateId: string, limit: number = 50): Promise<ActionLogEntry[]> {
+    // Implementation would read JSONL files and filter by templateId
+    // Similar to ListenersManager.getListenerLogs()
+    return [];
   }
 
   /**
-   * Notify all registered watchers
+   * Clean up old action instances (optional)
    */
-  private notifyWatchers() {
-    for (const watcher of this.watchers) {
-      try {
-        watcher();
-      } catch (error) {
-        console.error("Error notifying watcher:", error);
+  pruneInstances(maxAge: number = 3600000) { // 1 hour default
+    const now = Date.now();
+    for (const [id, instance] of this.instances) {
+      const age = now - new Date(instance.createdAt).getTime();
+      if (age > maxAge) {
+        this.instances.delete(id);
       }
     }
   }
 }
 ```
 
-## WebSocket Integration
+## WebSocket Protocol
 
-### Message Types
-
-When actions are sent to the frontend:
+### Server → Client Messages
 
 ```typescript
+// Send available templates (on connection)
 {
-  type: "actions_update",
-  actions: ActionConfig[],
+  type: "action_templates",
+  templates: ActionTemplate[]
+}
+
+// Send action instances (generated by agent during conversation)
+{
+  type: "action_instances",
+  actions: ActionInstance[],
+  sessionId: string
+}
+
+// Action execution result
+{
+  type: "action_result",
+  instanceId: string,
+  result: ActionResult,
   sessionId: string
 }
 ```
 
-When user clicks an action:
+### Client → Server Messages
 
 ```typescript
+// Execute action
 {
-  type: "action_clicked",
-  actionId: string,
+  type: "execute_action",
+  instanceId: string,
   sessionId: string
-}
-```
-
-### Server Implementation
-
-```typescript
-// In websocket-handler.ts
-import { ActionsManager } from "./actions-manager";
-
-const actionsManager = new ActionsManager();
-
-// Load actions on startup
-await actionsManager.loadAllActions();
-
-// Start watching for changes
-actionsManager.watchActions((actions) => {
-  // Broadcast to all connected clients
-  broadcastToAll({
-    type: "actions_update",
-    actions: actions
-  });
-});
-
-// Handle action clicks
-websocket.on("message", (data) => {
-  const message = JSON.parse(data);
-
-  if (message.type === "action_clicked") {
-    const action = actionsManager.getAction(message.actionId);
-    if (action) {
-      handleActionExecution(action, session);
-    }
-  }
-});
-
-function handleActionExecution(action: ActionConfig, session: Session) {
-  switch (action.type) {
-    case "search":
-      session.addUserMessage(`Search for emails: ${action.params.query}`);
-      break;
-    case "draft_email":
-      session.addUserMessage(`Draft email to ${action.params.to}`);
-      break;
-    case "show_email":
-      session.addUserMessage(`Show email ${action.params.emailId}`);
-      break;
-    // ... other action types
-  }
 }
 ```
 
 ## Frontend Integration
 
-### Actions Component
+### ActionButton Component
 
 ```typescript
 // client/components/ActionButton.tsx
+import { ActionInstance } from "../types";
+
 interface ActionButtonProps {
-  action: ActionConfig;
-  onExecute: (action: ActionConfig) => void;
+  action: ActionInstance;
+  onExecute: (instanceId: string) => void;
+  loading?: boolean;
 }
 
-export function ActionButton({ action, onExecute }: ActionButtonProps) {
+export function ActionButton({ action, onExecute, loading }: ActionButtonProps) {
   const styleClass = {
-    primary: "bg-blue-500 hover:bg-blue-600",
-    secondary: "bg-gray-500 hover:bg-gray-600",
-    danger: "bg-red-500 hover:bg-red-600"
+    primary: "bg-blue-600 hover:bg-blue-700 text-white",
+    secondary: "bg-gray-200 hover:bg-gray-300 text-gray-800",
+    danger: "bg-red-600 hover:bg-red-700 text-white"
   }[action.style || "primary"];
 
   return (
     <button
-      className={`px-4 py-2 rounded text-white ${styleClass}`}
-      onClick={() => onExecute(action)}
-      disabled={action.enabled === false}
+      onClick={() => onExecute(action.instanceId)}
+      disabled={loading}
+      className={`
+        px-3 py-1.5 rounded-md text-sm font-medium
+        transition-colors duration-200
+        disabled:opacity-50 disabled:cursor-not-allowed
+        ${styleClass}
+      `}
+      title={action.description}
     >
-      {action.icon && <span className="mr-2">{action.icon}</span>}
-      {action.label}
+      {loading ? "..." : action.label}
     </button>
   );
 }
 ```
 
-### Actions Panel
+### Actions in Chat Messages
 
 ```typescript
-// client/components/ActionsPanel.tsx
-export function ActionsPanel({ actions }: { actions: ActionConfig[] }) {
-  const handleExecute = (action: ActionConfig) => {
-    // Send to WebSocket
-    ws.send(JSON.stringify({
-      type: "action_clicked",
-      actionId: action.id,
-      sessionId: currentSessionId
-    }));
+// client/components/MessageRenderer.tsx
+import { ActionButton } from "./ActionButton";
+
+export function MessageRenderer({ message }: { message: Message }) {
+  const { sendMessage } = useWebSocket();
+
+  const handleActionExecute = (instanceId: string) => {
+    sendMessage({
+      type: "execute_action",
+      instanceId,
+      sessionId: message.sessionId
+    });
   };
 
   return (
-    <div className="actions-panel">
-      <h3>Quick Actions</h3>
-      <div className="grid gap-2">
-        {actions.map(action => (
-          <ActionButton
-            key={action.id}
-            action={action}
-            onExecute={handleExecute}
-          />
-        ))}
-      </div>
+    <div className="message">
+      {/* Message content */}
+      <div>{message.content}</div>
+
+      {/* Action buttons if present */}
+      {message.actions && message.actions.length > 0 && (
+        <div className="flex gap-2 mt-3 flex-wrap">
+          {message.actions.map(action => (
+            <ActionButton
+              key={action.instanceId}
+              action={action}
+              onExecute={handleActionExecute}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 ```
 
-## Agent Workflow
+## Agent Integration
 
-### How the Agent Creates Actions
+### How Agent Creates Actions
 
-1. **Agent analyzes user request**: "Watch for urgent emails from boss"
-
-2. **Agent uses Write tool** to create action file:
+The agent can create action instances during conversation by including them in responses:
 
 ```typescript
-// Agent writes to agent/custom_scripts/actions/boss-urgent-action.ts
-import type { ActionConfig } from "../types";
+// Agent's response includes actions metadata
+// This is handled by the backend Session class
 
-export const action: ActionConfig = {
-  id: "view_boss_urgent",
-  label: "View Boss Urgent",
-  description: "Shows urgent emails from your boss",
-  icon: "🚨",
-  type: "search",
-  style: "primary",
-  params: {
-    query: "from:boss@company.com (urgent OR asap)"
-  },
-  enabled: true
-};
+{
+  content: "I found that ACME Corp's invoice is 15 days overdue. Here's what you can do:",
+  actions: [
+    {
+      instanceId: "act_" + generateId(),
+      templateId: "send_payment_reminder_acme",
+      label: "Send payment reminder to ACME Corp for Invoice #2024-001",
+      description: "Invoice #2024-001 ($5,000) is 15 days past due",
+      params: {
+        invoiceNumber: "INV-2024-001",
+        amount: "$5,000",
+        dueDate: "December 15, 2024",
+        daysPastDue: 15
+      },
+      style: "primary",
+      sessionId: currentSessionId,
+      createdAt: new Date().toISOString()
+    }
+  ]
+}
 ```
 
-3. **Backend detects new file** via file watcher
+### System Prompt Addition
 
-4. **ActionsManager loads the new action**
-
-5. **Action is broadcast** to all connected clients
-
-6. **Frontend renders** the new action button
-
-7. **User clicks button** → sends action_clicked message
-
-8. **Backend executes** the action based on type and params
-
-### Agent System Prompt Addition
+Add to agent's system prompt:
 
 ```markdown
-You have the ability to create interactive action buttons that users can click.
+## Action Capabilities
 
-To create an action:
-1. Use the Write tool to create a TypeScript file in `agent/custom_scripts/actions/`
-2. Export an `action` object with the ActionConfig interface
-3. The action will automatically appear in the chat interface
+You can create interactive action buttons that users can click to execute specific operations.
 
-Example:
-```typescript
-import type { ActionConfig } from "../types";
+### Available Action Templates:
 
-export const action: ActionConfig = {
-  id: "unique_id",
-  label: "Button Text",
-  type: "search",
-  params: { query: "search query" }
-};
+{INSERT LIST OF TEMPLATES HERE - dynamically loaded}
+
+### How to Create Actions:
+
+When responding to the user, you can include action instances in your response. The system will automatically render them as clickable buttons.
+
+Include actions in a special format:
+
+```json
+{
+  "actions": [
+    {
+      "templateId": "send_payment_reminder_acme",
+      "label": "Send payment reminder to ACME Corp for Invoice #2024-001",
+      "params": {
+        "invoiceNumber": "INV-2024-001",
+        "amount": "$5,000",
+        "dueDate": "December 15, 2024",
+        "daysPastDue": 15
+      },
+      "style": "primary"
+    }
+  ]
+}
 ```
 
-Available action types:
-- search: Search emails with Gmail query
-- draft_email: Open email composer
-- show_email: Display specific email
-- set_reminder: Set reminder for email
-- archive: Archive emails
-- custom: Custom action
+### Guidelines:
 
-Use actions to provide quick, one-click operations for users.
+1. **Be Highly Specific**: Actions should be extremely specific to the user's actual workflow, not generic
+   - Good: "Send payment reminder to ACME Corp for Invoice #2024-001 (15 days overdue, $5,000)"
+   - Bad: "Send email"
+   - Templates themselves should be user-specific (e.g., "send_payment_reminder_acme" not "send_email")
+
+2. **Provide Rich Context**: Include description with full details about what this action does
+
+3. **Choose Appropriate Style**:
+   - `primary`: Main recommended actions
+   - `secondary`: Optional/alternative actions
+   - `danger`: Destructive/risky actions (delete, bulk archive, etc.)
+
+4. **Use Correct Template**: Match the template to the specific operation needed
+
+5. **Validate Parameters**: Ensure all required parameters are provided per template schema
+
+6. **Templates are User-Specific**: Each action template should be tailored to the user's specific workflows, vendors, teams, and processes
+```
+
+## Logging & Audit Trail
+
+All action executions logged to `.logs/actions/{date}.jsonl`:
+
+```json
+{
+  "timestamp": "2025-01-06T10:30:45.123Z",
+  "instanceId": "act_abc123",
+  "templateId": "send_email",
+  "sessionId": "session_xyz",
+  "params": {
+    "to": "vendor@acme.com",
+    "subject": "Payment Reminder",
+    "body": "..."
+  },
+  "result": {
+    "success": true,
+    "message": "Email sent successfully",
+    "data": { "messageId": "msg_456" }
+  },
+  "duration": 1250,
+  "error": null
+}
 ```
 
 ## Error Handling
 
-### Invalid Action File
-
+### Invalid Template
 ```typescript
-// ActionsManager handles errors gracefully
-try {
-  const module = await import(filePath);
-  if (!module.action?.id) {
-    console.error(`Invalid action file ${filename}: missing id`);
-    return;
-  }
-  // Load action...
-} catch (error) {
-  console.error(`Failed to load ${filename}:`, error);
-  // Continue loading other actions
+if (!template) {
+  return {
+    success: false,
+    message: `Template "${templateId}" not found. Available templates: ${availableIds.join(", ")}`
+  };
 }
 ```
 
 ### Missing Parameters
-
-Frontend should validate required parameters before sending:
-
 ```typescript
-function validateAction(action: ActionConfig): boolean {
-  switch (action.type) {
-    case "search":
-      return !!action.params.query;
-    case "show_email":
-      return !!action.params.emailId;
-    // ... other validations
-    default:
-      return true;
-  }
+// Validate against parameterSchema before execution
+const validation = validateParams(params, template.config.parameterSchema);
+if (!validation.valid) {
+  return {
+    success: false,
+    message: `Invalid parameters: ${validation.errors.join(", ")}`
+  };
+}
+```
+
+### Handler Errors
+```typescript
+try {
+  result = await handler(params, context);
+} catch (error) {
+  return {
+    success: false,
+    message: `Action failed: ${error.message}`
+  };
 }
 ```
 
 ## Best Practices
 
-1. **Unique IDs**: Use descriptive, unique action IDs (e.g., `view_boss_urgent_today`)
+1. **User-Specific Templates**: Create templates tailored to the user's specific workflows, vendors, customers, and processes (e.g., `send-payment-reminder-to-acme`, not `send-email`)
 
-2. **Clear Labels**: Button labels should be concise and action-oriented
+2. **Descriptive Naming**: Use specific verb-noun-context format (e.g., `forward-bugs-to-engineering`, `archive-old-newsletters`, `summarize-ceo-weekly-updates`)
 
-3. **Helpful Descriptions**: Provide context for what the action does
+3. **Very Specific Instances**: Agent should create highly specific action instances with full context in the label and description
 
-4. **Appropriate Styling**: Use `danger` style for destructive actions
+4. **Parameter Validation**: Validate all parameters against schema before execution
 
-5. **Enable/Disable**: Use `enabled: false` to temporarily disable actions
+5. **Error Messages**: Provide clear, actionable error messages
 
-6. **Parameterization**: Make actions reusable with flexible parameters
+6. **Logging**: Log all executions for audit trail and debugging
 
-7. **Icon Usage**: Use relevant emojis to make actions visually distinct
+7. **Idempotency**: Design handlers to be idempotent when possible
 
-8. **File Naming**: Use kebab-case for filenames matching action purpose
+8. **Resource Cleanup**: Prune old instances periodically
 
-## Future Enhancements
+9. **Testing**: Test handlers thoroughly with edge cases and real user data
 
-- Action groups/categories for organization
-- Keyboard shortcuts for actions
-- Action confirmation dialogs for destructive operations
-- Action history/logging
-- Conditional actions based on user context
-- Action templates for common patterns
-- Batch actions operating on multiple items
+10. **Documentation**: Document parameter schemas clearly with examples
+

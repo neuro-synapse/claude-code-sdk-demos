@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AssistantMessage as AssistantMessageType, ToolUseBlock, TextBlock } from './types';
+import { AssistantMessage as AssistantMessageType, ToolUseBlock, TextBlock, ActionInstance } from './types';
 import { EmailDisplay } from '../EmailDisplay';
 import { ListenerDisplay } from '../ListenerDisplay';
+import { ActionButton } from '../ActionButton';
+import { ComponentRenderer } from './ComponentRenderer';
 
 interface AssistantMessageProps {
   message: AssistantMessageType;
+  onExecuteAction?: (instanceId: string) => void;
+  ws?: WebSocket | null;
 }
 
 function formatTimestamp(timestamp: string): string {
@@ -406,9 +410,23 @@ function TextComponent({ text }: { text: TextBlock }) {
   );
 }
 
-export function AssistantMessage({ message }: AssistantMessageProps) {
+export function AssistantMessage({ message, onExecuteAction, ws }: AssistantMessageProps) {
   const [showMetadata, setShowMetadata] = useState(false);
-  
+  const [executingActions, setExecutingActions] = useState<Set<string>>(new Set());
+
+  const handleExecuteAction = (instanceId: string) => {
+    setExecutingActions(prev => new Set(prev).add(instanceId));
+    onExecuteAction?.(instanceId);
+    // Remove from executing set after a timeout (will be replaced by actual result)
+    setTimeout(() => {
+      setExecutingActions(prev => {
+        const next = new Set(prev);
+        next.delete(instanceId);
+        return next;
+      });
+    }, 5000);
+  };
+
   return (
     <div className="mb-3 p-3 bg-gray-50 border border-gray-200">
       <div className="flex justify-between items-start mb-2">
@@ -424,7 +442,7 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
           {formatTimestamp(message.timestamp)}
         </span>
       </div>
-      
+
       <div className="space-y-2">
         {message.content.map((block, index) => {
           if (block.type === 'text') {
@@ -435,7 +453,36 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
           return null;
         })}
       </div>
-      
+
+      {/* Render action buttons if present */}
+      {message.actions && message.actions.length > 0 && (
+        <div className="flex gap-2 mt-3 flex-wrap">
+          {message.actions.map(action => (
+            <ActionButton
+              key={action.instanceId}
+              action={action}
+              onExecute={handleExecuteAction}
+              loading={executingActions.has(action.instanceId)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Render component instances if present */}
+      {message.components && message.components.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {message.components.map(component => (
+            <ComponentRenderer
+              key={component.instanceId}
+              instanceId={component.instanceId}
+              componentId={component.componentId}
+              stateId={component.stateId}
+              ws={ws || null}
+            />
+          ))}
+        </div>
+      )}
+
       {message.metadata && (
         <div className="mt-3">
           <button

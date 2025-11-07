@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageRenderer } from './message/MessageRenderer';
 import { Message } from './message/types';
-import { Send, Wifi, WifiOff, RefreshCw, Mail, Clock } from 'lucide-react';
+import { Send, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 
 interface ChatInterfaceProps {
   isConnected: boolean;
@@ -11,9 +11,10 @@ interface ChatInterfaceProps {
   sessionId: string | null;
   isLoading: boolean;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  ws: WebSocket | null;
 }
 
-export function ChatInterface({ isConnected, sendMessage, messages, setMessages, sessionId, isLoading, setIsLoading }: ChatInterfaceProps) {
+export function ChatInterface({ isConnected, sendMessage, messages, setMessages, sessionId, isLoading, setIsLoading, ws }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('');
   const [syncStatus, setSyncStatus] = useState<{
     isSyncing: boolean;
@@ -26,26 +27,7 @@ export function ChatInterface({ isConnected, sendMessage, messages, setMessages,
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-  
-  // Format last sync time
-  const formatLastSync = (lastSync: string | null) => {
-    if (!lastSync) return 'Never synced';
-    
-    const date = new Date(lastSync);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    
-    return date.toLocaleDateString();
-  };
-  
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -137,18 +119,18 @@ export function ChatInterface({ isConnected, sendMessage, messages, setMessages,
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading || !isConnected) return;
-    
+
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
       content: inputValue,
       timestamp: new Date().toISOString(),
     };
-    
+
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
-    
+
     // Send message through WebSocket
     sendMessage({
       type: 'chat',
@@ -156,7 +138,17 @@ export function ChatInterface({ isConnected, sendMessage, messages, setMessages,
       sessionId,
     });
   };
-  
+
+  const handleExecuteAction = (instanceId: string) => {
+    console.log('Executing action:', instanceId);
+    // Send execute_action message through WebSocket
+    sendMessage({
+      type: 'execute_action',
+      instanceId,
+      sessionId,
+    });
+  };
+
   // No longer need email click handlers as React Markdown handles it
   
   return (
@@ -169,35 +161,19 @@ export function ChatInterface({ isConnected, sendMessage, messages, setMessages,
               {syncStatus.isSyncing ? (
                 <div className="flex items-center gap-2 px-2 py-1 bg-blue-50 rounded">
                   <RefreshCw className="w-3 h-3 text-blue-600 animate-spin" />
-                  <span className="text-xs text-blue-600 uppercase font-medium">Syncing emails...</span>
+                  <span className="text-xs text-blue-600 uppercase font-medium">Syncing...</span>
                 </div>
               ) : (
-                <>
-                  {syncStatus.emailCount > 0 && (
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <Mail className="w-3 h-3 text-gray-500" />
-                        <span className="text-xs text-gray-600 font-medium">{syncStatus.emailCount} emails</span>
-                      </div>
-                      {syncStatus.lastSync && (
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-3 h-3 text-gray-400" />
-                          <span className="text-xs text-gray-500">Synced {formatLastSync(syncStatus.lastSync)}</span>
-                        </div>
-                      )}
-                      <button
-                        onClick={() => {
-                          hasSyncedRef.current = false;
-                          syncEmails();
-                        }}
-                        className="p-1 hover:bg-gray-100 rounded transition-colors"
-                        title="Sync now"
-                      >
-                        <RefreshCw className="w-3 h-3 text-gray-500 hover:text-gray-700" />
-                      </button>
-                    </div>
-                  )}
-                </>
+                <button
+                  onClick={() => {
+                    hasSyncedRef.current = false;
+                    syncEmails();
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  title="Sync emails"
+                >
+                  <RefreshCw className="w-3 h-3 text-gray-500 hover:text-gray-700" />
+                </button>
               )}
               <div className="flex items-center gap-1.5 pl-3 border-l border-gray-200">
                 {isConnected ? (
@@ -223,10 +199,11 @@ export function ChatInterface({ isConnected, sendMessage, messages, setMessages,
           ) : (
             <div className="space-y-2">
               {messages.map((msg) => (
-                <MessageRenderer key={msg.id} message={msg} />
+                <MessageRenderer key={msg.id} message={msg} onExecuteAction={handleExecuteAction} ws={ws} />
               ))}
               {isLoading && (
-                <MessageRenderer 
+                <MessageRenderer
+                  ws={ws}
                   message={{
                     id: 'loading',
                     type: 'assistant',
