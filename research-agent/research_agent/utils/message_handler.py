@@ -41,13 +41,13 @@ def process_assistant_message(msg: Any, tracker: Any, transcript: Any) -> None:
                 description = block.input.get('description', 'no description')
                 prompt = block.input.get('prompt', '')
 
-                # Register with tracker
-                tracker.register_subagent_spawn(
+                # Register with tracker and get the subagent ID
+                subagent_id = tracker.register_subagent_spawn(
                     tool_use_id=block.id,
                     subagent_type=subagent_type,
                     description=description,
                     prompt=prompt
                 )
 
-                # User-facing output
-                transcript.write(f"\n\n[🚀 Spawning {subagent_type}: {description}]\n", end="")
+                # User-facing output with subagent ID
+                transcript.write(f"\n\n[🚀 Spawning {subagent_id}: {description}]\n", end="")

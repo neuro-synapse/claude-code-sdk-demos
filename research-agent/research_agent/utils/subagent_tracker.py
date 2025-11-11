@@ -77,7 +77,7 @@ class SubagentTracker:
         subagent_type: str,
         description: str,
         prompt: str
-    ):
+    ) -> str:
         """
         Register a new subagent spawn detected from the message stream.
 
@@ -86,6 +86,9 @@ class SubagentTracker:
             subagent_type: Type of subagent (e.g., 'researcher', 'report-writer')
             description: Brief description of the task
             prompt: The full prompt given to the subagent
+
+        Returns:
+            The generated subagent_id (e.g., 'RESEARCHER-1')
         """
         # Increment counter for this subagent type and create unique ID
         self.subagent_counters[subagent_type] += 1
@@ -106,6 +109,8 @@ class SubagentTracker:
         logger.info(f"{'='*60}")
         logger.info(f"Task: {description}")
         logger.info(f"{'='*60}")
+
+        return subagent_id
 
     def set_current_context(self, parent_tool_use_id: Optional[str]):
         """
@@ -245,11 +250,19 @@ class SubagentTracker:
             if session:
                 logger.warning(f"[{session.subagent_id}] Tool {record.tool_name} error: {error}")
 
+        # Get agent info for logging
+        session = self.sessions.get(record.parent_tool_use_id)
+        agent_id = session.subagent_id if session else "MAIN_AGENT"
+        agent_type = session.subagent_type if session else "lead"
+
         # Log completion to JSONL
         self._log_to_jsonl({
             "event": "tool_call_complete",
             "timestamp": datetime.now().isoformat(),
             "tool_use_id": tool_use_id,
+            "agent_id": agent_id,
+            "agent_type": agent_type,
+            "tool_name": record.tool_name,
             "success": error is None,
             "error": error,
             "output_size": len(str(tool_response)) if tool_response else 0
