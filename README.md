@@ -18,6 +18,13 @@ Demonstrations of working with spreadsheets and Excel files using Claude.
 ### 👋 [Hello World](./hello-world)
 A simple getting-started example to help you understand the basics of the Claude Agent SDK.
 
+### 🔬 [Research Agent](./research-agent)
+A multi-agent research system that coordinates specialized subagents to research topics and generate comprehensive reports:
+- Breaks research requests into subtopics
+- Spawns parallel researcher agents to search the web
+- Synthesizes findings into detailed reports
+- Demonstrates detailed subagent activity tracking
+
 ## Quick Start
 
 Each demo has its own directory with dedicated setup instructions. Navigate to the specific demo folder and follow its README for setup and usage details.
