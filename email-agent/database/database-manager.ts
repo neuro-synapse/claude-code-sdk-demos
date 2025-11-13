@@ -5,6 +5,7 @@ import { DATABASE_PATH } from "./config";
 export interface EmailRecord {
   id?: number;
   messageId: string;
+  imapUid?: number;
   threadId?: string;
   inReplyTo?: string;
   emailReferences?: string;
@@ -147,7 +148,7 @@ export class DatabaseManager {
         bodyText,
         toAddresses,
         ccAddresses,
-        attachmentFilenames,
+        attachment_names,
         tokenize = 'porter unicode61'
       )
     `);
@@ -205,6 +206,52 @@ export class DatabaseManager {
       AFTER DELETE ON emails
       BEGIN
         DELETE FROM emails_fts WHERE message_id = OLD.message_id;
+      END
+    `);
+
+    // Create UI State tables
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ui_states (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        state_id TEXT UNIQUE NOT NULL,
+        data_json TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS component_instances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        instance_id TEXT UNIQUE NOT NULL,
+        component_id TEXT NOT NULL,
+        state_id TEXT NOT NULL,
+        session_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create UI State indexes
+    const uiStateIndexes = [
+      "CREATE INDEX IF NOT EXISTS idx_ui_states_state_id ON ui_states(state_id)",
+      "CREATE INDEX IF NOT EXISTS idx_ui_states_updated_at ON ui_states(updated_at)",
+      "CREATE INDEX IF NOT EXISTS idx_component_instances_instance_id ON component_instances(instance_id)",
+      "CREATE INDEX IF NOT EXISTS idx_component_instances_component_id ON component_instances(component_id)",
+      "CREATE INDEX IF NOT EXISTS idx_component_instances_state_id ON component_instances(state_id)",
+      "CREATE INDEX IF NOT EXISTS idx_component_instances_session_id ON component_instances(session_id)"
+    ];
+
+    for (const index of uiStateIndexes) {
+      this.db.exec(index);
+    }
+
+    // Create trigger to automatically update updated_at timestamp
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS update_ui_states_timestamp
+      AFTER UPDATE ON ui_states
+      FOR EACH ROW
+      BEGIN
+        UPDATE ui_states SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
       END
     `);
   }
@@ -331,8 +378,8 @@ export class DatabaseManager {
         const attachmentNames = attachments.map(a => a.filename).join(" ");
         this.db.prepare(`
           UPDATE emails_fts
-          SET attachmentFilenames = $names
-          WHERE messageId = $messageId
+          SET attachment_names = $names
+          WHERE message_id = $messageId
         `).run({
           $names: attachmentNames,
           $messageId: email.messageId,
@@ -575,6 +622,7 @@ export class DatabaseManager {
     return {
       id: row.id,
       messageId: row.message_id,
+      imapUid: row.imap_uid,
       threadId: row.thread_id,
       inReplyTo: row.in_reply_to,
       emailReferences: row.email_references,
@@ -604,6 +652,190 @@ export class DatabaseManager {
       labels: row.labels ? JSON.parse(row.labels) : [],
       rawHeaders: row.raw_headers,
     };
+  }
+
+  /**
+   * Update email flags (for listener actions)
+   * Updates only the specified fields while preserving others
+   */
+  public updateEmailFlags(messageId: string, updates: {
+    isRead?: boolean;
+    isStarred?: boolean;
+    isImportant?: boolean;
+    labels?: string[];
+    folder?: string;
+  }): void {
+    const setClauses: string[] = [];
+    const params: any = { $messageId: messageId };
+
+    if (updates.isRead !== undefined) {
+      setClauses.push('is_read = $isRead');
+      params.$isRead = updates.isRead ? 1 : 0;
+    }
+
+    if (updates.isStarred !== undefined) {
+      setClauses.push('is_starred = $isStarred');
+      params.$isStarred = updates.isStarred ? 1 : 0;
+    }
+
+    if (updates.isImportant !== undefined) {
+      setClauses.push('is_important = $isImportant');
+      params.$isImportant = updates.isImportant ? 1 : 0;
+    }
+
+    if (updates.labels !== undefined) {
+      setClauses.push('labels = $labels');
+      params.$labels = JSON.stringify(updates.labels);
+    }
+
+    if (updates.folder !== undefined) {
+      setClauses.push('folder = $folder');
+      params.$folder = updates.folder;
+    }
+
+    // Always update the updated_at timestamp
+    setClauses.push('updated_at = CURRENT_TIMESTAMP');
+
+    if (setClauses.length === 1) {
+      // Only updated_at would be set, so nothing to update
+      return;
+    }
+
+    const sql = `
+      UPDATE emails
+      SET ${setClauses.join(', ')}
+      WHERE message_id = $messageId
+    `;
+
+    const query = this.db.prepare(sql);
+    query.run(params);
+  }
+
+  // ============================================================================
+  // UI State Operations
+  // ============================================================================
+
+  /**
+   * Get UI state by ID
+   */
+  public getUIState(stateId: string): any | null {
+    const query = this.db.prepare(`
+      SELECT data_json
+      FROM ui_states
+      WHERE state_id = $stateId
+    `);
+
+    const result = query.get({ $stateId: stateId }) as { data_json: string } | undefined;
+
+    if (!result) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(result.data_json);
+    } catch (error) {
+      console.error(`Error parsing UI state ${stateId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Set/update UI state
+   */
+  public setUIState(stateId: string, data: any): void {
+    const dataJson = JSON.stringify(data);
+
+    const query = this.db.prepare(`
+      INSERT INTO ui_states (state_id, data_json, created_at, updated_at)
+      VALUES ($stateId, $dataJson, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(state_id) DO UPDATE SET
+        data_json = $dataJson,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    query.run({ $stateId: stateId, $dataJson: dataJson });
+  }
+
+  /**
+   * List all UI states
+   */
+  public listUIStates(): Array<{ stateId: string; updatedAt: string }> {
+    const query = this.db.prepare(`
+      SELECT state_id as stateId, updated_at as updatedAt
+      FROM ui_states
+      ORDER BY updated_at DESC
+    `);
+
+    return query.all() as Array<{ stateId: string; updatedAt: string }>;
+  }
+
+  /**
+   * Delete UI state
+   */
+  public deleteUIState(stateId: string): void {
+    const query = this.db.prepare(`
+      DELETE FROM ui_states
+      WHERE state_id = $stateId
+    `);
+
+    query.run({ $stateId: stateId });
+  }
+
+  /**
+   * Register a component instance
+   */
+  public registerComponentInstance(instance: {
+    instanceId: string;
+    componentId: string;
+    stateId: string;
+    sessionId?: string;
+  }): void {
+    const query = this.db.prepare(`
+      INSERT INTO component_instances (instance_id, component_id, state_id, session_id, created_at)
+      VALUES ($instanceId, $componentId, $stateId, $sessionId, CURRENT_TIMESTAMP)
+      ON CONFLICT(instance_id) DO NOTHING
+    `);
+
+    query.run({
+      $instanceId: instance.instanceId,
+      $componentId: instance.componentId,
+      $stateId: instance.stateId,
+      $sessionId: instance.sessionId || null
+    });
+  }
+
+  /**
+   * Get component instances by session ID
+   */
+  public getComponentInstancesBySession(sessionId: string): Array<{
+    instanceId: string;
+    componentId: string;
+    stateId: string;
+  }> {
+    const query = this.db.prepare(`
+      SELECT instance_id as instanceId, component_id as componentId, state_id as stateId
+      FROM component_instances
+      WHERE session_id = $sessionId
+      ORDER BY created_at DESC
+    `);
+
+    return query.all({ $sessionId: sessionId }) as Array<{
+      instanceId: string;
+      componentId: string;
+      stateId: string;
+    }>;
+  }
+
+  /**
+   * Delete old component instances
+   */
+  public pruneOldComponentInstances(daysOld: number = 7): void {
+    const query = this.db.prepare(`
+      DELETE FROM component_instances
+      WHERE created_at < datetime('now', '-' || $days || ' days')
+    `);
+
+    query.run({ $days: daysOld });
   }
 
   // Close database connection

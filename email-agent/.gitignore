@@ -88,6 +88,12 @@ Thumbs.db
 .claude/checkpoints/
 .claude/settings.local.json
 
+# Override parent .gitignore for agent markdown files
+!agent/.claude/
+!agent/.claude/agents/
+!agent/.claude/agents/*.md
+!agent/data/PROFILE.MD
+
 # Lock files (keep only one)
 # Uncomment the lock files you don't want to track
 # package-lock.json
@@ -125,3 +131,6 @@ Thumbs.db
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+# Listener logs with personal email data
+agent/custom_scripts/listeners/.logs/
+agent/custom_scripts/listeners/.logs/*.jsonl

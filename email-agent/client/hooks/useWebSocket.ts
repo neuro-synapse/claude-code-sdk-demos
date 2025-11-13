@@ -127,5 +127,6 @@ export function useWebSocket({
     sendMessage,
     disconnect,
     reconnect: connect,
+    ws: wsRef.current,
   };
 }
