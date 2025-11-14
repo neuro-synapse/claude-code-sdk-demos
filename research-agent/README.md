@@ -6,6 +6,14 @@ A multi-agent research system that coordinates specialized subagents to research
 - **Traditional Mode**: Deep exploration of complex topics
 - **Wide Research Mode**: Analyzing lists of items with equal quality guarantee
 
+**Document processing skills:**
+- 📊 **Excel (.xlsx)** - Create spreadsheets with formulas and formatting
+- 📄 **Word (.docx)** - Generate professional documents
+- 📑 **PDF** - Extract, create, and fill PDF forms
+- 📊 **PowerPoint (.pptx)** - Build presentations with layouts and charts
+
+**[📖 Skills Setup Guide →](SKILLS_SETUP.md)**
+
 ## Quick Start
 
 ### Traditional Research Mode
