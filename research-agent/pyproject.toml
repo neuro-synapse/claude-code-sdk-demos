@@ -6,11 +6,15 @@ requires-python = ">=3.10"
 dependencies = [
     "claude-agent-sdk>=0.1.0",
     "python-dotenv>=1.0.0",
+    "dbos>=1.0.0",
+    "e2b-code-interpreter>=2.7.0",
+    "psycopg2-binary>=2.9.9",
 ]
 
 [project.scripts]
 research-agent = "research_agent.agent:chat"
 research-agent-wide = "research_agent.agent_wide:chat"
+research-agent-durable = "research_agent.agent_durable:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

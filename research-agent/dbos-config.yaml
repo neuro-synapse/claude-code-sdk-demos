@@ -1,0 +1,84 @@
+# DBOS Configuration for Durable Research Agent
+#
+# DBOS provides durable workflow execution using PostgreSQL as the backing store.
+# All workflows automatically recover from failures and continue from the last completed step.
+
+database:
+  # PostgreSQL connection string
+  # Override with DATABASE_URL environment variable
+  connectionString: "${DATABASE_URL}"
+
+  # Connection pool settings
+  pool:
+    min: 2
+    max: 10
+    idleTimeoutMillis: 30000
+
+# Workflow settings
+workflows:
+  # Maximum time a workflow can run before timeout (seconds)
+  # Default: 3600 (1 hour)
+  maxExecutionTime: 3600
+
+  # Maximum number of retries for failed steps
+  # Default: 3
+  maxRetries: 3
+
+  # Retry backoff strategy
+  retryBackoff:
+    initial: 1000    # Initial delay in ms
+    max: 30000       # Maximum delay in ms
+    multiplier: 2.0  # Exponential backoff multiplier
+
+# Logging
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+
+  # Log format: json or text
+  format: text
+
+  # Log workflow execution details
+  logWorkflows: true
+
+  # Log step execution details
+  logSteps: true
+
+# Runtime settings
+runtime:
+  # Number of worker threads for workflow execution
+  # Default: 4
+  workers: 4
+
+  # Enable/disable automatic recovery on startup
+  # When true, DBOS will resume all incomplete workflows on startup
+  autoRecover: true
+
+  # Workflow state cleanup
+  cleanup:
+    # Delete completed workflow state after N days
+    # Default: 30 days
+    retentionDays: 30
+
+    # Run cleanup job every N hours
+    # Default: 24 hours
+    cleanupInterval: 24
+
+# Application metadata
+application:
+  name: "research-agent"
+  version: "1.0.0"
+  environment: "development"  # or "production"
+
+# Advanced settings
+advanced:
+  # Enable detailed transaction logging
+  # Useful for debugging but impacts performance
+  detailedLogging: false
+
+  # Enable workflow state snapshots
+  # Creates periodic snapshots for faster recovery
+  enableSnapshots: true
+
+  # Snapshot interval (number of steps)
+  snapshotInterval: 10

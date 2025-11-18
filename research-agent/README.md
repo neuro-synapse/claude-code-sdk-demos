@@ -2,9 +2,10 @@
 
 A multi-agent research system that coordinates specialized subagents to research any topic and generate comprehensive reports.
 
-**Two modes available:**
+**Three modes available:**
 - **Traditional Mode**: Deep exploration of complex topics
 - **Wide Research Mode**: Analyzing lists of items with equal quality guarantee
+- **Durable Mode** ⭐ NEW: E2B sandboxes + DBOS workflows for production use
 
 **Document processing skills:**
 - 📊 **Excel (.xlsx)** - Create spreadsheets with formulas and formatting
@@ -13,6 +14,20 @@ A multi-agent research system that coordinates specialized subagents to research
 - 📊 **PowerPoint (.pptx)** - Build presentations with layouts and charts
 
 **[📖 Skills Setup Guide →](SKILLS_SETUP.md)**
+
+## Modes Comparison
+
+| Feature | Traditional | Wide Research | Durable (E2B + DBOS) |
+|---------|-------------|---------------|----------------------|
+| Use Case | Single topic | Lists of items | Production research |
+| Sub-agents | 2-4 researchers | 1 per item | 1 per item |
+| Execution | In-process | In-process | Isolated sandboxes |
+| Recovery | None | None | **Automatic** ✓ |
+| Isolation | Shared context | Shared context | **Complete** ✓ |
+| Logging | Basic | Enhanced | **Comprehensive** ✓ |
+| Best For | Quick research | Comparisons | **Mission-critical** ✓ |
+
+**[📖 Durable Mode Documentation →](DURABLE_AGENT.md)**
 
 ## Quick Start
 
@@ -41,6 +56,33 @@ uv run research_agent/agent_wide.py
 Then ask: "Research Apple, Microsoft, Google, and Amazon"
 
 **[📖 Full Wide Research Documentation →](WIDE_RESEARCH.md)**
+
+### Durable Mode (Production)
+
+```bash
+# Setup environment
+cp .env.example .env
+# Edit .env and add your API keys
+
+# Install dependencies
+uv sync
+
+# Setup PostgreSQL (required for DBOS)
+createdb research_agent
+
+# Run durable agent
+uv run research-agent-durable
+```
+
+Then ask: "Research Apple, Microsoft, Google, Amazon"
+
+**Features:**
+- ✓ Each sub-agent in isolated E2B sandbox
+- ✓ Automatic recovery from failures
+- ✓ No lost work (DBOS durability)
+- ✓ Comprehensive logging
+
+**[📖 Full Durable Mode Documentation →](DURABLE_AGENT.md)**
 
 ## How It Works
 
